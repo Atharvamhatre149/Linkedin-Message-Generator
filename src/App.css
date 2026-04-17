@@ -101,6 +101,108 @@ input:focus {
   background: #475569;
 }
 
+/* ── Find Employees Section ── */
+.find-section {
+  margin-top: 28px;
+  padding: 20px;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  background: #1a2744;
+  transition: opacity 0.2s;
+}
+
+.find-section--disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.find-header {
+  margin-bottom: 14px;
+}
+
+.find-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #93c5fd;
+}
+
+.linkedin-icon {
+  width: 16px;
+  height: 16px;
+  color: #0a66c2;
+  flex-shrink: 0;
+}
+
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.chip {
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 1px solid #334155;
+  background: #1e293b;
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.chip:hover {
+  border-color: #0a66c2;
+  color: #93c5fd;
+}
+
+.chip--active {
+  background: #0a66c2;
+  border-color: #0a66c2;
+  color: #fff;
+}
+
+.btn-linkedin {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: 8px;
+  border: none;
+  background: #0a66c2;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-linkedin:hover:not(:disabled) {
+  background: #004182;
+}
+
+.btn-linkedin:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.find-hint {
+  margin-top: 12px;
+  font-size: 12px;
+  color: #475569;
+  line-height: 1.5;
+}
+
+/* ── Output Section ── */
 .output {
   margin-top: 32px;
   border: 1px solid #334155;
