@@ -16,15 +16,11 @@ const ROLE_SUGGESTIONS = [
   "Software Engineer",
   "Software Engineer I",
   "Software Engineer II",
-  "Software Engineer III",
   "Senior Software Engineer",
-  "Staff Software Engineer",
-  "Principal Software Engineer",
   // Amazon-style SDE ladder
   "Software Development Engineer",
   "SDE-1",
   "SDE-2",
-  "SDE-3",
   // Stack specialisations
   "Frontend Developer",
   "Frontend Engineer",
@@ -32,29 +28,9 @@ const ROLE_SUGGESTIONS = [
   "Backend Engineer",
   "Full Stack Developer",
   "Full Stack Engineer",
+  "Web Application Developer",
   "Web Developer",
-  "Mobile Developer",
-  "iOS Developer",
-  "Android Developer",
-  // Platform / infra
-  "DevOps Engineer",
-  "Site Reliability Engineer",
-  "Cloud Engineer",
-  "Platform Engineer",
-  "Systems Engineer",
-  // Data / AI
-  "Data Engineer",
-  "Data Scientist",
-  "Machine Learning Engineer",
-  "AI Engineer",
-  // Quality / security
-  "QA Engineer",
-  "Test Engineer",
-  "Security Engineer",
-  // Leadership
-  "Engineering Manager",
-  "Technical Lead",
-  "Tech Lead",
+  "Android Developer"
 ];
 
 
