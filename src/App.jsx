@@ -9,6 +9,54 @@ const FILTERS = [
   { label: "Any Employee", keywords: "" },
 ];
 
+// Common tech-role suggestions shown in the Position/Role dropdown.
+// Users can still type anything custom — this is just autocomplete.
+const ROLE_SUGGESTIONS = [
+  // Generalist SWE ladders
+  "Software Engineer",
+  "Software Engineer I",
+  "Software Engineer II",
+  "Software Engineer III",
+  "Senior Software Engineer",
+  "Staff Software Engineer",
+  "Principal Software Engineer",
+  // Amazon-style SDE ladder
+  "Software Development Engineer",
+  "SDE-1",
+  "SDE-2",
+  "SDE-3",
+  // Stack specialisations
+  "Frontend Developer",
+  "Frontend Engineer",
+  "Backend Developer",
+  "Backend Engineer",
+  "Full Stack Developer",
+  "Full Stack Engineer",
+  "Web Developer",
+  "Mobile Developer",
+  "iOS Developer",
+  "Android Developer",
+  // Platform / infra
+  "DevOps Engineer",
+  "Site Reliability Engineer",
+  "Cloud Engineer",
+  "Platform Engineer",
+  "Systems Engineer",
+  // Data / AI
+  "Data Engineer",
+  "Data Scientist",
+  "Machine Learning Engineer",
+  "AI Engineer",
+  // Quality / security
+  "QA Engineer",
+  "Test Engineer",
+  "Security Engineer",
+  // Leadership
+  "Engineering Manager",
+  "Technical Lead",
+  "Tech Lead",
+];
+
 
 function generateReferralMessage({ company, position, jobLink, jobId }) {
   const jobIdPart = jobId ? ` (Job ID: ${jobId})` : "";
@@ -202,10 +250,17 @@ function App() {
         <label>
           Position / Role <span className="required">*</span>
           <input
+            list="role-suggestions"
             value={position}
             onChange={(e) => setPosition(e.target.value)}
-            placeholder="e.g. Software Engineer"
+            placeholder="Pick from dropdown or type your own"
+            autoComplete="off"
           />
+          <datalist id="role-suggestions">
+            {ROLE_SUGGESTIONS.map((r) => (
+              <option key={r} value={r} />
+            ))}
+          </datalist>
         </label>
 
         <label>
