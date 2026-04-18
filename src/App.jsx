@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import "./App.css";
 
 const FILTERS = [
@@ -132,6 +132,55 @@ function App() {
   const [msgType, setMsgType] = useState("referral");
   const [lookupState, setLookupState] = useState({ loading: false, error: "" });
 
+  // ── LinkedIn automation (Phase 2+) ────────────────────────────
+  //   status:  "unknown" | "checking" | "loggedIn" | "loggedOut"
+  //   reason:  short machine-readable code from /api/auth/status
+  const [auth, setAuth] = useState({ status: "unknown", reason: "" });
+  const [loginInFlight, setLoginInFlight] = useState(false);
+
+  async function refreshAuthStatus() {
+    setAuth((a) => ({ ...a, status: "checking" }));
+    try {
+      const resp = await fetch("/api/auth/status");
+      const data = await resp.json();
+      setAuth({
+        status: data.loggedIn ? "loggedIn" : "loggedOut",
+        reason: data.reason || "",
+      });
+    } catch (e) {
+      setAuth({ status: "loggedOut", reason: "probe_failed" });
+    }
+  }
+
+  useEffect(() => {
+    refreshAuthStatus();
+  }, []);
+
+  async function handleLogin() {
+    setLoginInFlight(true);
+    try {
+      const resp = await fetch("/api/auth/login", { method: "POST" });
+      const data = await resp.json();
+      if (data.success) {
+        await refreshAuthStatus();
+      } else {
+        setAuth({ status: "loggedOut", reason: data.error || "login_failed" });
+      }
+    } catch (e) {
+      setAuth({ status: "loggedOut", reason: "network_error" });
+    } finally {
+      setLoginInFlight(false);
+    }
+  }
+
+  async function handleLogout() {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } finally {
+      setAuth({ status: "loggedOut", reason: "cleared" });
+    }
+  }
+
   const extractedId = extractCompanyId(companyLinkedInId);
 
   const isValid = company.trim() && position.trim();
@@ -185,7 +234,7 @@ function App() {
     if (!name) return;
     setLookupState({ loading: true, error: "" });
     try {
-      const resp = await fetch("/api/lookup-company", {
+      const resp = await fetch("/api/company/lookup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
@@ -357,6 +406,89 @@ function App() {
           <pre className="message">{message}</pre>
         </div>
       )}
+
+      {/* ── LinkedIn Automation ─────────────────────────────── */}
+      <AutomationPanel
+        auth={auth}
+        loginInFlight={loginInFlight}
+        onLogin={handleLogin}
+        onLogout={handleLogout}
+        onRefresh={refreshAuthStatus}
+      />
+    </div>
+  );
+}
+
+// ── Automation Panel ─────────────────────────────────────────
+// Shows the LinkedIn session state and exposes login/logout.
+// Phases 3-5 will extend this with search/send actions.
+function AutomationPanel({ auth, loginInFlight, onLogin, onLogout, onRefresh }) {
+  const { status, reason } = auth;
+
+  const statusMeta = {
+    unknown:   { dot: "dot--idle",     label: "Initialising…" },
+    checking:  { dot: "dot--checking", label: "Checking session…" },
+    loggedIn:  { dot: "dot--ok",       label: "Connected to LinkedIn" },
+    loggedOut: { dot: "dot--off",      label: "Not connected" },
+  }[status];
+
+  return (
+    <div className="automation">
+      <div className="automation-header">
+        <span className="automation-title">🤖 LinkedIn Automation</span>
+        <div className={`status-pill status-pill--${status}`}>
+          <span className={`dot ${statusMeta.dot}`} />
+          {statusMeta.label}
+        </div>
+      </div>
+
+      {status === "loggedOut" && (
+        <>
+          <p className="automation-hint">
+            Log in once to enable finding connections and auto-sending messages.
+            A browser window will open — sign in, and your session stays saved.
+          </p>
+          <div className="automation-actions">
+            <button
+              className="btn-linkedin"
+              disabled={loginInFlight}
+              onClick={onLogin}
+            >
+              {loginInFlight ? "Waiting for login…" : "🔐 Log in to LinkedIn"}
+            </button>
+            <button className="btn-reset automation-refresh" onClick={onRefresh}>
+              Refresh
+            </button>
+          </div>
+          {reason && reason !== "no_session" && reason !== "cleared" && (
+            <p className="automation-reason">Last check: {reason}</p>
+          )}
+        </>
+      )}
+
+      {status === "loggedIn" && (
+        <>
+          <p className="automation-hint automation-hint--success">
+            ✅ Session active. Coming next: find your 1st-degree connections at the target company and send your message.
+          </p>
+          <div className="automation-actions">
+            <button className="btn-reset" onClick={onLogout}>
+              Log out
+            </button>
+            <button className="btn-reset automation-refresh" onClick={onRefresh}>
+              Refresh
+            </button>
+          </div>
+        </>
+      )}
+
+      {(status === "unknown" || status === "checking") && (
+        <p className="automation-hint">Checking LinkedIn session status…</p>
+      )}
+
+      <p className="automation-legal">
+        ⚠️ LinkedIn's ToS restricts automation. Use sparingly and at your own risk.
+      </p>
     </div>
   );
 }
