@@ -252,6 +252,119 @@ function App() {
     });
   }
 
+  async function handleSendBatch() {
+    const targets = searchState.results
+      .filter((r) => selected.has(r.profileUrl))
+      .map((r) => ({ profileUrl: r.profileUrl, name: r.name }));
+    if (!targets.length || !message) return;
+
+    const confirmMsg =
+      (sendState.dryRun ? "[DRY RUN] " : "") +
+      `Send this message to ${targets.length} ${
+        targets.length === 1 ? "person" : "people"
+      } on LinkedIn? This can't be undone.`;
+    if (!sendState.dryRun && !window.confirm(confirmMsg)) return;
+
+    setSendState((s) => ({
+      ...s,
+      inFlight: true,
+      progress: targets.map((t) => ({
+        profileUrl: t.profileUrl,
+        name: t.name,
+        status: "pending",
+      })),
+    }));
+
+    try {
+      const resp = await fetch("/api/send/batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targets,
+          message,
+          dryRun: sendState.dryRun,
+        }),
+      });
+
+      if (!resp.ok || !resp.body) {
+        const data = await resp.json().catch(() => ({}));
+        setSendState((s) => ({
+          ...s,
+          inFlight: false,
+          progress: s.progress.map((p) => ({
+            ...p,
+            status: "error",
+            error: data.error || `HTTP ${resp.status}`,
+          })),
+        }));
+        if (data.error === "auth_expired") refreshAuthStatus();
+        return;
+      }
+
+      // Stream NDJSON events
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() || "";
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          let evt;
+          try { evt = JSON.parse(line); } catch { continue; }
+          handleSendEvent(evt);
+        }
+      }
+    } catch (e) {
+      setSendState((s) => ({ ...s, inFlight: false }));
+    } finally {
+      setSendState((s) => ({ ...s, inFlight: false }));
+    }
+  }
+
+  function handleSendEvent(evt) {
+    setSendState((s) => {
+      if (evt.type === "progress") {
+        return {
+          ...s,
+          progress: s.progress.map((p, i) =>
+            i === evt.index ? { ...p, status: "sending" } : p
+          ),
+        };
+      }
+      if (evt.type === "result") {
+        return {
+          ...s,
+          progress: s.progress.map((p, i) =>
+            i === evt.index
+              ? {
+                  ...p,
+                  status: evt.success ? "sent" : "error",
+                  error: evt.success ? undefined : evt.error,
+                  dryRun: evt.dryRun,
+                }
+              : p
+          ),
+        };
+      }
+      if (evt.type === "delay") {
+        return { ...s, nextIn: evt.ms };
+      }
+      if (evt.type === "halt") {
+        if (evt.reason === "auth_expired") refreshAuthStatus();
+        return { ...s, halt: evt.reason };
+      }
+      return s;
+    });
+  }
+
+  function toggleDryRun() {
+    setSendState((s) => ({ ...s, dryRun: !s.dryRun }));
+  }
+
   const extractedId = extractCompanyId(companyLinkedInId);
 
   const isValid = company.trim() && position.trim();
@@ -496,6 +609,9 @@ function App() {
         selected={selected}
         onToggle={toggleSelected}
         onToggleAll={toggleSelectAll}
+        sendState={sendState}
+        onSend={handleSendBatch}
+        onToggleDryRun={toggleDryRun}
       />
     </div>
   );
@@ -518,6 +634,9 @@ function AutomationPanel({
   selected,
   onToggle,
   onToggleAll,
+  sendState,
+  onSend,
+  onToggleDryRun,
 }) {
   const { status, reason } = auth;
 
@@ -589,12 +708,20 @@ function AutomationPanel({
               )}
 
               {searchState.results.length > 0 && (
-                <ConnectionList
-                  results={searchState.results}
-                  selected={selected}
-                  onToggle={onToggle}
-                  onToggleAll={onToggleAll}
-                />
+                <>
+                  <ConnectionList
+                    results={searchState.results}
+                    selected={selected}
+                    onToggle={onToggle}
+                    onToggleAll={onToggleAll}
+                  />
+                  <SendControls
+                    selectedCount={selected.size}
+                    sendState={sendState}
+                    onSend={onSend}
+                    onToggleDryRun={onToggleDryRun}
+                  />
+                </>
               )}
 
               {!searchState.loading &&
@@ -690,6 +817,74 @@ function ConnectionList({ results, selected, onToggle, onToggleAll }) {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+// ── Send Controls + per-target progress ──────────────────────
+function SendControls({ selectedCount, sendState, onSend, onToggleDryRun }) {
+  const { inFlight, dryRun, progress, halt } = sendState;
+  const sentCount = progress.filter((p) => p.status === "sent").length;
+  const errorCount = progress.filter((p) => p.status === "error").length;
+  const activeCount = progress.filter((p) => p.status === "sending").length;
+
+  return (
+    <div className="send-controls">
+      <div className="send-row">
+        <label className="dry-run-toggle">
+          <input
+            type="checkbox"
+            checked={dryRun}
+            onChange={onToggleDryRun}
+            disabled={inFlight}
+          />
+          <span>
+            Dry run
+            <span className="dry-run-help"> (types but doesn't send)</span>
+          </span>
+        </label>
+        <button
+          className="btn-linkedin"
+          disabled={selectedCount === 0 || inFlight}
+          onClick={onSend}
+        >
+          {inFlight
+            ? `Sending… (${sentCount}/${progress.length})`
+            : `${dryRun ? "🧪 Dry run" : "🚀 Send"} to ${selectedCount} selected`}
+        </button>
+      </div>
+
+      {progress.length > 0 && (
+        <ul className="send-progress">
+          {progress.map((p) => (
+            <li key={p.profileUrl} className={`send-progress-item status-${p.status}`}>
+              <span className="send-progress-icon">
+                {p.status === "pending" && "⏸"}
+                {p.status === "sending" && "⏳"}
+                {p.status === "sent" && (p.dryRun ? "🧪" : "✅")}
+                {p.status === "error" && "❌"}
+              </span>
+              <span className="send-progress-name">{p.name}</span>
+              {p.error && <span className="send-progress-error">{p.error}</span>}
+              {p.status === "sent" && p.dryRun && (
+                <span className="send-progress-note">dry-run ok</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {halt && (
+        <p className="automation-error">
+          🛑 Batch halted: <strong>{halt}</strong>. Re-check your session before retrying.
+        </p>
+      )}
+
+      {!inFlight && progress.length > 0 && (
+        <p className="send-summary">
+          {sentCount} sent · {errorCount} failed · {progress.length - sentCount - errorCount - activeCount} pending
+        </p>
+      )}
     </div>
   );
 }

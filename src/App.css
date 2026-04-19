@@ -645,6 +645,124 @@ input:focus {
   color: #93c5fd;
 }
 
+/* ── Send controls ─────────────────────── */
+.send-controls {
+  margin-top: 14px;
+  padding: 14px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid #334155;
+  border-radius: 8px;
+}
+
+.send-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+
+.send-row .btn-linkedin {
+  flex: 1 1 auto;
+  min-width: 200px;
+}
+
+.dry-run-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #cbd5e1;
+  cursor: pointer;
+  user-select: none;
+}
+
+.dry-run-toggle input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  accent-color: #f59e0b;
+}
+
+.dry-run-help {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.send-progress {
+  list-style: none;
+  margin: 14px 0 0 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.send-progress-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #cbd5e1;
+  transition: background 0.15s;
+}
+
+.send-progress-item.status-sending {
+  background: rgba(251, 191, 36, 0.08);
+  color: #fcd34d;
+}
+
+.send-progress-item.status-sent {
+  background: rgba(52, 211, 153, 0.08);
+  color: #6ee7b7;
+}
+
+.send-progress-item.status-error {
+  background: rgba(248, 113, 113, 0.08);
+  color: #fca5a5;
+}
+
+.send-progress-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+  width: 18px;
+}
+
+.send-progress-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.send-progress-error {
+  font-size: 11px;
+  font-family: ui-monospace, monospace;
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.12);
+  padding: 2px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.send-progress-note {
+  font-size: 11px;
+  color: #fbbf24;
+  font-style: italic;
+}
+
+.send-summary {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed #334155;
+  font-size: 12px;
+  color: #94a3b8;
+  text-align: center;
+}
+
 .automation-legal {
   font-size: 11px;
   color: #64748b;

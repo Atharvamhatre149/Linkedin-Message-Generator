@@ -89,17 +89,83 @@ const routes = [
   ],
 
   // ── MESSAGE SEND (Phase 5) ─────────────────────────────────
+  // Single send. Used internally by the batch endpoint but also exposed
+  // for one-off testing.
   [
     'POST',
     'send',
     async (req, res) => {
-      const { profileUrl, message } = await readJson(req)
+      const { profileUrl, message, dryRun = false } = await readJson(req)
       if (!profileUrl || !message) return send(res, 400, { error: 'missing_fields' })
       try {
-        const result = await linkedin.sendMessage(profileUrl, message)
-        return send(res, result.success ? 200 : 500, result)
+        const result = await linkedin.sendMessage(profileUrl, message, { dryRun })
+        return send(res, 200, result)
       } catch (e) {
+        if (e?.code === 'auth_expired') {
+          return send(res, 401, { error: 'auth_expired' })
+        }
         return send(res, 500, { error: 'send_failed', message: e?.message })
+      }
+    },
+  ],
+
+  // Batch send — serially with jittered delay between targets.
+  // Returns a streamed newline-delimited JSON (NDJSON) body so the UI can
+  // show per-person progress without waiting for the whole batch.
+  [
+    'POST',
+    'send/batch',
+    async (req, res) => {
+      const { targets, message, dryRun = false } = await readJson(req)
+      if (!Array.isArray(targets) || !targets.length || !message) {
+        return send(res, 400, { error: 'missing_fields' })
+      }
+      const MAX_PER_BATCH = 20
+      if (targets.length > MAX_PER_BATCH) {
+        return send(res, 400, { error: 'too_many', max: MAX_PER_BATCH })
+      }
+
+      res.statusCode = 200
+      res.setHeader('Content-Type', 'application/x-ndjson')
+      res.setHeader('Cache-Control', 'no-cache')
+      const write = (obj) => res.write(JSON.stringify(obj) + '\n')
+
+      const jitter = (min, max) => Math.floor(min + Math.random() * (max - min))
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+      try {
+        for (let i = 0; i < targets.length; i++) {
+          const t = targets[i]
+          write({ type: 'progress', index: i, total: targets.length, profileUrl: t.profileUrl, name: t.name })
+          let result
+          try {
+            result = await linkedin.sendMessage(t.profileUrl, message, { dryRun })
+          } catch (e) {
+            if (e?.code === 'auth_expired') {
+              write({ type: 'result', index: i, success: false, error: 'auth_expired', profileUrl: t.profileUrl })
+              write({ type: 'halt', reason: 'auth_expired' })
+              break
+            }
+            result = { success: false, error: 'send_failed', message: e?.message }
+          }
+          write({ type: 'result', index: i, ...result, profileUrl: t.profileUrl, name: t.name })
+
+          if (result.error === 'challenge_triggered') {
+            write({ type: 'halt', reason: 'challenge_triggered' })
+            break
+          }
+
+          if (i < targets.length - 1) {
+            const delay = jitter(8_000, 20_000)
+            write({ type: 'delay', ms: delay })
+            await sleep(delay)
+          }
+        }
+        write({ type: 'done' })
+        res.end()
+      } catch (e) {
+        write({ type: 'error', message: e?.message })
+        res.end()
       }
     },
   ],

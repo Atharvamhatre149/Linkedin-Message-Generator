@@ -99,12 +99,29 @@ export async function login({ timeoutMs = 180_000 } = {}) {
 
   try {
     await page.goto('https://www.linkedin.com/login', { waitUntil: 'domcontentloaded' })
-    // Wait for either the feed (logged in) or a timeout
-    await page.waitForURL(/linkedin\.com\/(feed|checkpoint|in\/)/, { timeout: timeoutMs })
-    // Checkpoint (2FA/captcha) → keep waiting for feed
-    if (/checkpoint/.test(page.url())) {
-      await page.waitForURL(/linkedin\.com\/feed/, { timeout: timeoutMs })
+
+    // The definitive "logged in" signal is the presence of the `li_at` cookie.
+    // URL-based detection is unreliable (checkpoint bounces, /in/ matches in
+    // other paths, user may navigate around before closing). So we poll the
+    // cookie jar until it shows up.
+    const deadline = Date.now() + timeoutMs
+    let liAt = null
+    while (Date.now() < deadline) {
+      const cookies = await context.cookies('https://www.linkedin.com')
+      liAt = cookies.find((c) => c.name === 'li_at')
+      if (liAt && liAt.value && liAt.value.length > 20) break
+      await page.waitForTimeout(1_000)
     }
+
+    if (!liAt) {
+      await browser.close().catch(() => {})
+      return { success: false, error: 'login_timeout_no_li_at' }
+    }
+
+    // Give any in-flight session handshakes a brief moment to finish before
+    // persisting state.
+    await page.waitForTimeout(1_500)
+
     await saveSession(context)
     await browser.close()
     return { success: true }
@@ -120,6 +137,20 @@ export async function login({ timeoutMs = 180_000 } = {}) {
  */
 export async function verifySession() {
   if (!hasSession()) return { valid: false, reason: 'no_session' }
+
+  // Cheap guard — if the file exists but is missing li_at, the login flow
+  // never fully completed. Skip the network round-trip in that case.
+  try {
+    const raw = fs.readFileSync(SESSION_PATH, 'utf8')
+    const parsed = JSON.parse(raw)
+    const hasLiAt = (parsed.cookies || []).some(
+      (c) => c.name === 'li_at' && c.value && c.value.length > 20
+    )
+    if (!hasLiAt) return { valid: false, reason: 'missing_li_at' }
+  } catch {
+    return { valid: false, reason: 'session_unreadable' }
+  }
+
   const context = await newContext()
   const page = await context.newPage()
   try {
@@ -128,7 +159,12 @@ export async function verifySession() {
       timeout: 15_000,
     })
     const valid = /linkedin\.com\/feed/.test(page.url())
-    return { valid, reason: valid ? 'ok' : 'redirected_to_' + new URL(page.url()).pathname }
+    return {
+      valid,
+      reason: valid
+        ? 'ok'
+        : 'redirected_to_' + new URL(page.url()).pathname,
+    }
   } catch (e) {
     return { valid: false, reason: e?.message || 'probe_failed' }
   } finally {
@@ -393,9 +429,141 @@ export async function searchConnections({
 }
 
 // ── Message sending ──────────────────────────────────────────
-// TODO (Phase 5)
-export async function sendMessage(/* profileUrl, text */) {
-  throw new Error('not_implemented')
+/**
+ * Sends `text` to the LinkedIn profile at `profileUrl`.
+ * Only works for 1st-degree connections (or Premium InMail, which
+ * this helper does not try to use).
+ *
+ * Options:
+ *   dryRun — if true, opens the overlay and types but skips the
+ *            final Send click; useful for sanity-checking a batch.
+ *
+ * Returns:
+ *   { success: true, sentAt }  on a confirmed send
+ *   { success: false, error }  otherwise; error is one of:
+ *     profile_not_found | not_1st_degree_or_no_button |
+ *     overlay_failed    | input_rejected | send_verify_failed |
+ *     challenge_triggered
+ */
+export async function sendMessage(profileUrl, text, { dryRun = false } = {}) {
+  if (!profileUrl || !text) {
+    return { success: false, error: 'missing_fields' }
+  }
+  if (!hasSession()) {
+    const err = new Error('auth_expired')
+    err.code = 'auth_expired'
+    throw err
+  }
+
+  const context = await newContext()
+  const page = await context.newPage()
+
+  try {
+    // 1. Navigate to profile
+    await page.goto(profileUrl, { waitUntil: 'domcontentloaded', timeout: 25_000 })
+
+    // Session / challenge checks
+    if (/\/(login|authwall|uas\/login)/.test(page.url())) {
+      const err = new Error('auth_expired')
+      err.code = 'auth_expired'
+      throw err
+    }
+    if (/\/(checkpoint|challenge)/.test(page.url())) {
+      return { success: false, error: 'challenge_triggered' }
+    }
+
+    // Give the profile a moment to settle (avatar, actions bar).
+    await page.waitForTimeout(_internal.jitter(1200, 2200))
+
+    // Detect 404-style "profile not found" pages.
+    const is404 = await page
+      .evaluate(() => /profile is not available|page isn't available|page doesn't exist/i
+        .test(document.body.innerText || ''))
+      .catch(() => false)
+    if (is404) return { success: false, error: 'profile_not_found' }
+
+    // 2. Find and click the Message button. We try multiple selectors
+    //    because LinkedIn A/B-tests the profile header heavily.
+    const messageButton = page
+      .locator(
+        [
+          'main button[aria-label^="Message"]:not([disabled])',
+          'main a[aria-label^="Message"]',
+          'main button:has-text("Message"):not([disabled])',
+          '.pvs-profile-actions button:has-text("Message")',
+          'button.message-anywhere-button',
+        ].join(', ')
+      )
+      .first()
+
+    const found = await messageButton.waitFor({ timeout: 8_000 }).then(
+      () => true,
+      () => false
+    )
+    if (!found) return { success: false, error: 'not_1st_degree_or_no_button' }
+
+    await page.waitForTimeout(_internal.jitter(400, 900))
+    await messageButton.click().catch(() => {})
+
+    // 3. Wait for the message overlay to appear.
+    const overlay = page
+      .locator('.msg-overlay-conversation-bubble, .msg-form__contenteditable')
+      .first()
+    const overlayOk = await overlay.waitFor({ timeout: 8_000 }).then(
+      () => true,
+      () => false
+    )
+    if (!overlayOk) return { success: false, error: 'overlay_failed' }
+
+    // 4. Locate the contenteditable input and focus it.
+    const input = page
+      .locator('.msg-form__contenteditable[contenteditable="true"]')
+      .first()
+    await input.waitFor({ timeout: 5_000 })
+    await page.waitForTimeout(_internal.jitter(350, 750))
+    await input.click()
+
+    // 5. Type the message — line-by-line, Shift+Enter for newlines,
+    //    human-ish per-character cadence.
+    const lines = text.split('\n')
+    for (let i = 0; i < lines.length; i++) {
+      await page.keyboard.type(lines[i], { delay: _internal.jitter(25, 65) })
+      if (i < lines.length - 1) {
+        await page.keyboard.down('Shift')
+        await page.keyboard.press('Enter')
+        await page.keyboard.up('Shift')
+      }
+    }
+
+    await page.waitForTimeout(_internal.jitter(700, 1500))
+
+    // 6. Make sure Send is enabled (proves the input was accepted).
+    const sendBtn = page.locator('button.msg-form__send-button').first()
+    const sendEnabled = await sendBtn
+      .evaluate((el) => !el.disabled && !el.getAttribute('aria-disabled'))
+      .catch(() => false)
+    if (!sendEnabled) return { success: false, error: 'input_rejected' }
+
+    if (dryRun) {
+      return { success: true, dryRun: true, sentAt: Date.now() }
+    }
+
+    // 7. Fire the send.
+    await page.waitForTimeout(_internal.jitter(600, 1400))
+    await sendBtn.click()
+
+    // 8. Verify — either the input clears, or the thread now shows
+    //    our message as the latest outgoing item.
+    await page.waitForTimeout(2_000)
+    const afterText = await input.textContent().catch(() => '')
+    const cleared = !afterText || afterText.trim().length === 0
+    if (!cleared) return { success: false, error: 'send_verify_failed' }
+
+    return { success: true, sentAt: Date.now() }
+  } finally {
+    await saveSession(context).catch(() => {})
+    await context.close().catch(() => {})
+  }
 }
 
 // Re-export small helpers the API handler might want
