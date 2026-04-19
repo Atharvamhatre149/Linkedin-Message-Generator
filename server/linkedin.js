@@ -26,13 +26,34 @@ const SESSION_PATH = path.join(__dirname, '.session.json')
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const jitter = (min, max) => Math.floor(min + Math.random() * (max - min))
 
+// ── Debug / visibility flags ─────────────────────────────────
+// LINKEDIN_HEADED=1       → run the shared browser visible (see every step)
+// LINKEDIN_SLOWMO=500     → slow every Playwright action by N ms
+// LINKEDIN_DEVTOOLS=1     → open DevTools alongside the window (implies headed)
+const truthy = (v) => /^(1|true|yes|on)$/i.test(String(v || ''))
+const DEBUG = {
+  headed: truthy(process.env.LINKEDIN_HEADED) || truthy(process.env.LINKEDIN_DEVTOOLS),
+  slowMo: Number(process.env.LINKEDIN_SLOWMO || 0) || 0,
+  devtools: truthy(process.env.LINKEDIN_DEVTOOLS),
+}
+if (DEBUG.headed || DEBUG.slowMo) {
+  console.log(
+    '[linkedin] debug mode →',
+    `headed=${DEBUG.headed}`,
+    `slowMo=${DEBUG.slowMo}ms`,
+    `devtools=${DEBUG.devtools}`
+  )
+}
+
 // ── Lifecycle ────────────────────────────────────────────────
 let browserPromise = null
 
-function getBrowser({ headless = true } = {}) {
+function getBrowser({ headless = !DEBUG.headed } = {}) {
   if (browserPromise) return browserPromise
   browserPromise = chromium.launch({
     headless,
+    slowMo: DEBUG.slowMo,
+    devtools: DEBUG.devtools,
     args: [
       '--disable-blink-features=AutomationControlled',
       '--no-sandbox',
@@ -42,7 +63,7 @@ function getBrowser({ headless = true } = {}) {
   return browserPromise
 }
 
-async function newContext({ headless = true } = {}) {
+async function newContext({ headless = !DEBUG.headed } = {}) {
   const browser = await getBrowser({ headless })
   const opts = {
     viewport: { width: 1366, height: 820 },
