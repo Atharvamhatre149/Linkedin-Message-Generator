@@ -181,6 +181,77 @@ function App() {
     }
   }
 
+  // ── Connection search + batch send state (Phases 4-5) ────────
+  const [searchState, setSearchState] = useState({
+    loading: false,
+    error: "",
+    results: [],
+  });
+  const [selected, setSelected] = useState(new Set()); // Set of profileUrls
+  const [sendState, setSendState] = useState({
+    inFlight: false,
+    dryRun: false,
+    progress: [], // [{ profileUrl, name, status, error? }]
+  });
+
+  async function handleFindConnections() {
+    setSearchState({ loading: true, error: "", results: [] });
+    setSelected(new Set());
+    try {
+      const resp = await fetch("/api/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          companyId: extractedId,
+          companyName: company.trim(),
+          filterKeywords: FILTERS[activeFilter].keywords,
+          connectionsOnly: true,
+          limit: 10,
+        }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        if (data.error === "auth_expired") {
+          refreshAuthStatus();
+          setSearchState({
+            loading: false,
+            error: "LinkedIn session expired. Log in again.",
+            results: [],
+          });
+        } else {
+          setSearchState({
+            loading: false,
+            error: data.message || data.error || "Search failed.",
+            results: [],
+          });
+        }
+        return;
+      }
+      setSearchState({ loading: false, error: "", results: data.results || [] });
+    } catch (e) {
+      setSearchState({
+        loading: false,
+        error: "Network error — is the dev server running?",
+        results: [],
+      });
+    }
+  }
+
+  function toggleSelected(profileUrl) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(profileUrl) ? next.delete(profileUrl) : next.add(profileUrl);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    setSelected((prev) => {
+      if (prev.size === searchState.results.length) return new Set();
+      return new Set(searchState.results.map((r) => r.profileUrl));
+    });
+  }
+
   const extractedId = extractCompanyId(companyLinkedInId);
 
   const isValid = company.trim() && position.trim();
@@ -417,6 +488,14 @@ function App() {
         onLogin={handleLogin}
         onLogout={handleLogout}
         onRefresh={refreshAuthStatus}
+        company={company.trim()}
+        hasMessage={!!message}
+        searchState={searchState}
+        onFind={handleFindConnections}
+        canSearch={!!company.trim()}
+        selected={selected}
+        onToggle={toggleSelected}
+        onToggleAll={toggleSelectAll}
       />
     </div>
   );
@@ -425,7 +504,21 @@ function App() {
 // ── Automation Panel ─────────────────────────────────────────
 // Shows the LinkedIn session state and exposes login/logout.
 // Phases 3-5 will extend this with search/send actions.
-function AutomationPanel({ auth, loginInFlight, onLogin, onLogout, onRefresh }) {
+function AutomationPanel({
+  auth,
+  loginInFlight,
+  onLogin,
+  onLogout,
+  onRefresh,
+  company,
+  hasMessage,
+  searchState,
+  onFind,
+  canSearch,
+  selected,
+  onToggle,
+  onToggleAll,
+}) {
   const { status, reason } = auth;
 
   const statusMeta = {
@@ -471,15 +564,56 @@ function AutomationPanel({ auth, loginInFlight, onLogin, onLogout, onRefresh }) 
 
       {status === "loggedIn" && (
         <>
-          <p className="automation-hint automation-hint--success">
-            ✅ Session active. Coming next: find your 1st-degree connections at the target company and send your message.
-          </p>
-          <div className="automation-actions">
-            <button className="btn-reset" onClick={onLogout}>
+          {!hasMessage && (
+            <p className="automation-hint">
+              Generate a message first, then find connections at <strong>{company || "the company"}</strong> to message.
+            </p>
+          )}
+
+          {hasMessage && (
+            <>
+              <div className="automation-actions">
+                <button
+                  className="btn-linkedin"
+                  disabled={!canSearch || searchState.loading}
+                  onClick={onFind}
+                >
+                  {searchState.loading
+                    ? "Searching LinkedIn…"
+                    : `🔍 Find my connections at ${company || "company"}`}
+                </button>
+              </div>
+
+              {searchState.error && (
+                <p className="automation-error">⚠ {searchState.error}</p>
+              )}
+
+              {searchState.results.length > 0 && (
+                <ConnectionList
+                  results={searchState.results}
+                  selected={selected}
+                  onToggle={onToggle}
+                  onToggleAll={onToggleAll}
+                />
+              )}
+
+              {!searchState.loading &&
+                !searchState.error &&
+                searchState.results.length === 0 && (
+                  <p className="automation-hint automation-hint--muted">
+                    Click the button above to find 1st-degree connections
+                    at <strong>{company || "this company"}</strong>.
+                  </p>
+                )}
+            </>
+          )}
+
+          <div className="automation-footer-actions">
+            <button className="btn-reset automation-refresh" onClick={onLogout}>
               Log out
             </button>
             <button className="btn-reset automation-refresh" onClick={onRefresh}>
-              Refresh
+              Refresh status
             </button>
           </div>
         </>
@@ -492,6 +626,70 @@ function AutomationPanel({ auth, loginInFlight, onLogin, onLogout, onRefresh }) 
       <p className="automation-legal">
         ⚠️ LinkedIn's ToS restricts automation. Use sparingly and at your own risk.
       </p>
+    </div>
+  );
+}
+
+// ── Connection result list with selectable rows ──────────────
+function ConnectionList({ results, selected, onToggle, onToggleAll }) {
+  const allSelected = selected.size === results.length;
+  return (
+    <div className="connection-list">
+      <div className="connection-list-header">
+        <label className="select-all">
+          <input
+            type="checkbox"
+            checked={allSelected}
+            onChange={onToggleAll}
+          />
+          <span>
+            {allSelected ? "Unselect all" : "Select all"} ({selected.size}/{results.length})
+          </span>
+        </label>
+      </div>
+      <ul className="connection-items">
+        {results.map((r) => (
+          <li key={r.profileUrl} className="connection-item">
+            <label>
+              <input
+                type="checkbox"
+                checked={selected.has(r.profileUrl)}
+                onChange={() => onToggle(r.profileUrl)}
+              />
+              {r.avatar ? (
+                <img src={r.avatar} alt="" className="avatar" />
+              ) : (
+                <span className="avatar avatar--placeholder">
+                  {(r.name || "?")[0]}
+                </span>
+              )}
+              <div className="connection-info">
+                <div className="connection-name">
+                  {r.name}
+                  {r.connectionDegree && (
+                    <span className="connection-degree">
+                      {" "}
+                      · {r.connectionDegree}
+                    </span>
+                  )}
+                </div>
+                {r.title && (
+                  <div className="connection-title">{r.title}</div>
+                )}
+              </div>
+              <a
+                href={r.profileUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="connection-link"
+                onClick={(e) => e.stopPropagation()}
+              >
+                ↗
+              </a>
+            </label>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

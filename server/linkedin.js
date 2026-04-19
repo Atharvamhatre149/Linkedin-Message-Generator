@@ -261,9 +261,135 @@ export async function lookupCompany(name) {
 }
 
 // ── People search ────────────────────────────────────────────
-// TODO (Phase 4)
-export async function searchConnections(/* { companyId, filterKeywords, connectionsOnly } */) {
-  throw new Error('not_implemented')
+/**
+ * Search LinkedIn people with optional company + network filters.
+ * Input:
+ *   companyId        — numeric LinkedIn company ID (preferred for accuracy)
+ *   companyName      — fallback keyword when no ID available
+ *   filterKeywords   — extra keyword (e.g. "recruiter", "engineering manager")
+ *   connectionsOnly  — if true, restrict to 1st-degree connections (network=["F"])
+ *   limit            — max results to return (default 10, LinkedIn shows ~10/page)
+ * Returns: array of { name, title, profileUrl, avatar, connectionDegree }
+ */
+export async function searchConnections({
+  companyId = '',
+  companyName = '',
+  filterKeywords = '',
+  connectionsOnly = true,
+  limit = 10,
+} = {}) {
+  if (!hasSession()) {
+    const err = new Error('auth_expired')
+    err.code = 'auth_expired'
+    throw err
+  }
+
+  const params = new URLSearchParams()
+  if (companyId) {
+    params.set('origin', 'FACETED_SEARCH')
+    params.set('currentCompany', `["${companyId}"]`)
+    if (filterKeywords) params.set('keywords', filterKeywords)
+  } else {
+    const q = filterKeywords
+      ? `${filterKeywords} ${companyName}`.trim()
+      : companyName.trim()
+    params.set('keywords', q)
+    params.set('origin', 'GLOBAL_SEARCH_HEADER')
+  }
+  if (connectionsOnly) params.set('network', '["F"]')
+
+  const url = `https://www.linkedin.com/search/results/people/?${params.toString()}`
+
+  const context = await newContext()
+  const page = await context.newPage()
+
+  try {
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20_000 })
+    if (/\/(login|authwall|checkpoint)/.test(page.url())) {
+      const err = new Error('auth_expired')
+      err.code = 'auth_expired'
+      throw err
+    }
+
+    // Let Voyager hydrate the result list. Some A/B layouts don't emit
+    // networkidle quickly, so we wait for any of a few known containers
+    // and fall back to a fixed delay.
+    const containerSelectors = [
+      'ul[role="list"] li .entity-result',
+      '.reusable-search__result-container',
+      '[data-chameleon-result-urn]',
+      '.search-results__list li',
+    ].join(', ')
+    await page.waitForSelector(containerSelectors, { timeout: 10_000 }).catch(() => {})
+    await page.waitForTimeout(_internal.jitter(600, 1400))
+
+    // Scroll once to coax lazy-rendering (LinkedIn hides results below fold).
+    await page
+      .evaluate(() => window.scrollBy(0, window.innerHeight))
+      .catch(() => {})
+    await page.waitForTimeout(_internal.jitter(400, 900))
+
+    const results = await page.evaluate((max) => {
+      const out = []
+      const cards = document.querySelectorAll(
+        [
+          '[data-chameleon-result-urn]',
+          '.reusable-search__result-container',
+          'ul[role="list"] li',
+        ].join(', ')
+      )
+      const seen = new Set()
+      for (const card of cards) {
+        if (out.length >= max) break
+
+        // Profile link — must contain /in/
+        const link = card.querySelector('a[href*="/in/"]')
+        if (!link) continue
+        const profileUrl = link.href.split('?')[0].replace(/\/$/, '')
+        if (seen.has(profileUrl)) continue
+        seen.add(profileUrl)
+
+        const nameEl = card.querySelector(
+          'span[dir="ltr"] span[aria-hidden="true"], ' +
+            '.entity-result__title-text a span[aria-hidden="true"], ' +
+            '.entity-result__title-text'
+        )
+        const titleEl = card.querySelector(
+          '.entity-result__primary-subtitle, ' +
+            '.t-14.t-black.t-normal, ' +
+            'div.t-14.t-normal'
+        )
+        const degreeEl = card.querySelector(
+          '.entity-result__badge-text, ' +
+            '.dist-value, ' +
+            '.distance-badge'
+        )
+        const avatarEl = card.querySelector(
+          'img.presence-entity__image, ' +
+            'img.EntityPhoto-circle-4, ' +
+            'img[alt*="Photo"], ' +
+            'img'
+        )
+
+        const name = nameEl?.textContent?.trim() || ''
+        if (!name || /^LinkedIn Member$/i.test(name)) continue  // skip private profiles
+
+        out.push({
+          name,
+          title: titleEl?.textContent?.trim() || '',
+          profileUrl,
+          avatar: avatarEl?.src || '',
+          connectionDegree: degreeEl?.textContent?.trim() || '',
+        })
+      }
+      return out
+    }, limit)
+
+    return results
+  } finally {
+    await saveSession(context).catch(() => {})
+    await context.close().catch(() => {})
+  }
 }
 
 // ── Message sending ──────────────────────────────────────────
