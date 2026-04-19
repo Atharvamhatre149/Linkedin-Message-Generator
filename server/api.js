@@ -62,6 +62,9 @@ const routes = [
         if (!result) return send(res, 404, { error: 'not_found' })
         return send(res, 200, result)
       } catch (e) {
+        if (e?.code === 'auth_expired') {
+          return send(res, 401, { error: 'auth_expired' })
+        }
         return send(res, 500, { error: 'lookup_failed', message: e?.message })
       }
     },

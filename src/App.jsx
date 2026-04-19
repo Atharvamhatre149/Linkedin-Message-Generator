@@ -241,13 +241,16 @@ function App() {
       });
       const data = await resp.json();
       if (!resp.ok || !data.id) {
-        setLookupState({
-          loading: false,
-          error:
-            data.error === "not_found"
-              ? "Couldn't find this company on LinkedIn. Paste the ID manually."
-              : "Lookup failed. Try again or paste the ID manually.",
-        });
+        let errMsg;
+        if (data.error === "not_found") {
+          errMsg = "Couldn't find this company on LinkedIn. Paste the ID manually.";
+        } else if (data.error === "auth_expired") {
+          errMsg = "LinkedIn session expired. Log in again in the Automation panel below.";
+          refreshAuthStatus();
+        } else {
+          errMsg = "Lookup failed. Try again or paste the ID manually.";
+        }
+        setLookupState({ loading: false, error: errMsg });
         return;
       }
       setCompanyLinkedInId(data.id);

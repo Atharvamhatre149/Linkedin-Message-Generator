@@ -137,9 +137,127 @@ export async function verifySession() {
 }
 
 // ── Company ID lookup ────────────────────────────────────────
-// TODO (Phase 3)
-export async function lookupCompany(/* name */) {
-  throw new Error('not_implemented')
+// URN patterns that LinkedIn embeds on company pages / search results.
+// Listed from most specific to least; first match wins.
+const COMPANY_URN_PATTERNS = [
+  /urn:li:fsd_company:(\d+)/,
+  /urn:li:fs_company:(\d+)/,
+  /urn:li:company:(\d+)/,
+]
+
+/**
+ * Given a company name, return its numeric LinkedIn ID + display name.
+ * Strategy:
+ *   1. Open the authenticated people/company search for that keyword.
+ *   2. Grab the first company result's link.
+ *   3. If the URL already contains a numeric ID → done.
+ *   4. Otherwise navigate to the company page and grep its HTML for a
+ *      `urn:li:*_company:<id>` token (these are always present in the
+ *      embedded JSON that LinkedIn ships for the client bundle).
+ * Returns null when nothing matches.
+ * Throws { code: 'auth_expired' } when the saved session is dead.
+ */
+export async function lookupCompany(name) {
+  if (!name || !name.trim()) return null
+  if (!hasSession()) {
+    const err = new Error('auth_expired')
+    err.code = 'auth_expired'
+    throw err
+  }
+
+  const context = await newContext()
+  const page = await context.newPage()
+
+  try {
+    // 1. Do a companies-scoped search.
+    const searchUrl =
+      'https://www.linkedin.com/search/results/companies/?keywords=' +
+      encodeURIComponent(name.trim())
+
+    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 20_000 })
+
+    if (/\/(login|authwall|checkpoint)/.test(page.url())) {
+      const err = new Error('auth_expired')
+      err.code = 'auth_expired'
+      throw err
+    }
+
+    // Give React / Voyager time to hydrate the result list. We can't rely on
+    // a single stable selector because LinkedIn ships two or three layouts
+    // concurrently (A/B testing). Waiting on the network to go idle is safer.
+    await page
+      .waitForLoadState('networkidle', { timeout: 8_000 })
+      .catch(() => {})
+
+    // 2. Pick the first company link. LinkedIn renders these as
+    //    <a href="/company/{slug-or-id}/...">.
+    const firstHref = await page.evaluate(() => {
+      const candidates = document.querySelectorAll('a[href*="/company/"]')
+      for (const a of candidates) {
+        const href = a.getAttribute('href') || ''
+        // Skip navigation links like /company/browse/... or /company/setup/.
+        if (/\/company\/(browse|setup|signup|admin)/.test(href)) continue
+        if (!/\/company\/[^/?#]+/.test(href)) continue
+        return a.href
+      }
+      return null
+    })
+
+    if (!firstHref) return null
+
+    // Try to harvest a display name from the first result card while we're here.
+    const displayName = await page
+      .evaluate((href) => {
+        const a = document.querySelector(`a[href="${new URL(href).pathname}"]`)
+        const card =
+          a?.closest('.reusable-search__result-container, .entity-result, li') ||
+          a?.parentElement
+        const nameEl = card?.querySelector(
+          '.entity-result__title-text a span[aria-hidden="true"], ' +
+            '.entity-result__title-text, ' +
+            'span[aria-hidden="true"]'
+        )
+        return nameEl?.textContent?.trim() || ''
+      }, firstHref)
+      .catch(() => '')
+
+    // 3. Fast path — URL already has the numeric ID.
+    const inlineId = firstHref.match(/\/company\/(\d+)(?:[/?#]|$)/)
+    if (inlineId) {
+      return { id: inlineId[1], name: displayName || name.trim(), url: firstHref }
+    }
+
+    // 4. Slow path — follow the slug URL and grep the HTML for a company URN.
+    await page.goto(firstHref, { waitUntil: 'domcontentloaded', timeout: 20_000 })
+    await page
+      .waitForLoadState('networkidle', { timeout: 8_000 })
+      .catch(() => {})
+
+    if (/\/(login|authwall|checkpoint)/.test(page.url())) {
+      const err = new Error('auth_expired')
+      err.code = 'auth_expired'
+      throw err
+    }
+
+    const html = await page.content()
+    for (const pat of COMPANY_URN_PATTERNS) {
+      const m = html.match(pat)
+      if (m) {
+        const title = (await page.title()).replace(/\s*\|\s*LinkedIn.*$/i, '').trim()
+        return {
+          id: m[1],
+          name: displayName || title || name.trim(),
+          url: page.url(),
+        }
+      }
+    }
+
+    return null
+  } finally {
+    // Refresh cookies + tidy up.
+    await saveSession(context).catch(() => {})
+    await context.close().catch(() => {})
+  }
 }
 
 // ── People search ────────────────────────────────────────────
