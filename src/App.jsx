@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import "./App.css";
 
 const FILTERS = [
@@ -30,9 +30,8 @@ const ROLE_SUGGESTIONS = [
   "Full Stack Engineer",
   "Web Application Developer",
   "Web Developer",
-  "Android Developer"
+  "Android Developer",
 ];
-
 
 function generateReferralMessage({ company, position, jobLink, jobId }) {
   const jobIdPart = jobId ? ` (Job ID: ${jobId})` : "";
@@ -130,240 +129,6 @@ function App() {
   const [copied, setCopied] = useState(false);
   const [activeFilter, setActiveFilter] = useState(0);
   const [msgType, setMsgType] = useState("referral");
-  const [lookupState, setLookupState] = useState({ loading: false, error: "" });
-
-  // ── LinkedIn automation (Phase 2+) ────────────────────────────
-  //   status:  "unknown" | "checking" | "loggedIn" | "loggedOut"
-  //   reason:  short machine-readable code from /api/auth/status
-  const [auth, setAuth] = useState({ status: "unknown", reason: "" });
-  const [loginInFlight, setLoginInFlight] = useState(false);
-
-  async function refreshAuthStatus() {
-    setAuth((a) => ({ ...a, status: "checking" }));
-    try {
-      const resp = await fetch("/api/auth/status");
-      const data = await resp.json();
-      setAuth({
-        status: data.loggedIn ? "loggedIn" : "loggedOut",
-        reason: data.reason || "",
-      });
-    } catch (e) {
-      setAuth({ status: "loggedOut", reason: "probe_failed" });
-    }
-  }
-
-  useEffect(() => {
-    refreshAuthStatus();
-  }, []);
-
-  async function handleLogin() {
-    setLoginInFlight(true);
-    try {
-      const resp = await fetch("/api/auth/login", { method: "POST" });
-      const data = await resp.json();
-      if (data.success) {
-        await refreshAuthStatus();
-      } else {
-        setAuth({ status: "loggedOut", reason: data.error || "login_failed" });
-      }
-    } catch (e) {
-      setAuth({ status: "loggedOut", reason: "network_error" });
-    } finally {
-      setLoginInFlight(false);
-    }
-  }
-
-  async function handleLogout() {
-    try {
-      await fetch("/api/auth/logout", { method: "POST" });
-    } finally {
-      setAuth({ status: "loggedOut", reason: "cleared" });
-    }
-  }
-
-  // ── Connection search + batch send state (Phases 4-5) ────────
-  const [searchState, setSearchState] = useState({
-    loading: false,
-    error: "",
-    results: [],
-  });
-  const [selected, setSelected] = useState(new Set()); // Set of profileUrls
-  const [sendState, setSendState] = useState({
-    inFlight: false,
-    dryRun: false,
-    progress: [], // [{ profileUrl, name, status, error? }]
-  });
-
-  async function handleFindConnections() {
-    setSearchState({ loading: true, error: "", results: [] });
-    setSelected(new Set());
-    try {
-      const resp = await fetch("/api/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          companyId: extractedId,
-          companyName: company.trim(),
-          filterKeywords: FILTERS[activeFilter].keywords,
-          connectionsOnly: true,
-          limit: 10,
-        }),
-      });
-      const data = await resp.json();
-      if (!resp.ok) {
-        if (data.error === "auth_expired") {
-          refreshAuthStatus();
-          setSearchState({
-            loading: false,
-            error: "LinkedIn session expired. Log in again.",
-            results: [],
-          });
-        } else {
-          setSearchState({
-            loading: false,
-            error: data.message || data.error || "Search failed.",
-            results: [],
-          });
-        }
-        return;
-      }
-      setSearchState({ loading: false, error: "", results: data.results || [] });
-    } catch (e) {
-      setSearchState({
-        loading: false,
-        error: "Network error — is the dev server running?",
-        results: [],
-      });
-    }
-  }
-
-  function toggleSelected(profileUrl) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      next.has(profileUrl) ? next.delete(profileUrl) : next.add(profileUrl);
-      return next;
-    });
-  }
-
-  function toggleSelectAll() {
-    setSelected((prev) => {
-      if (prev.size === searchState.results.length) return new Set();
-      return new Set(searchState.results.map((r) => r.profileUrl));
-    });
-  }
-
-  async function handleSendBatch() {
-    const targets = searchState.results
-      .filter((r) => selected.has(r.profileUrl))
-      .map((r) => ({ profileUrl: r.profileUrl, name: r.name }));
-    if (!targets.length || !message) return;
-
-    const confirmMsg =
-      (sendState.dryRun ? "[DRY RUN] " : "") +
-      `Send this message to ${targets.length} ${
-        targets.length === 1 ? "person" : "people"
-      } on LinkedIn? This can't be undone.`;
-    if (!sendState.dryRun && !window.confirm(confirmMsg)) return;
-
-    setSendState((s) => ({
-      ...s,
-      inFlight: true,
-      progress: targets.map((t) => ({
-        profileUrl: t.profileUrl,
-        name: t.name,
-        status: "pending",
-      })),
-    }));
-
-    try {
-      const resp = await fetch("/api/send/batch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          targets,
-          message,
-          dryRun: sendState.dryRun,
-        }),
-      });
-
-      if (!resp.ok || !resp.body) {
-        const data = await resp.json().catch(() => ({}));
-        setSendState((s) => ({
-          ...s,
-          inFlight: false,
-          progress: s.progress.map((p) => ({
-            ...p,
-            status: "error",
-            error: data.error || `HTTP ${resp.status}`,
-          })),
-        }));
-        if (data.error === "auth_expired") refreshAuthStatus();
-        return;
-      }
-
-      // Stream NDJSON events
-      const reader = resp.body.getReader();
-      const decoder = new TextDecoder();
-      let buf = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const lines = buf.split("\n");
-        buf = lines.pop() || "";
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          let evt;
-          try { evt = JSON.parse(line); } catch { continue; }
-          handleSendEvent(evt);
-        }
-      }
-    } catch (e) {
-      setSendState((s) => ({ ...s, inFlight: false }));
-    } finally {
-      setSendState((s) => ({ ...s, inFlight: false }));
-    }
-  }
-
-  function handleSendEvent(evt) {
-    setSendState((s) => {
-      if (evt.type === "progress") {
-        return {
-          ...s,
-          progress: s.progress.map((p, i) =>
-            i === evt.index ? { ...p, status: "sending" } : p
-          ),
-        };
-      }
-      if (evt.type === "result") {
-        return {
-          ...s,
-          progress: s.progress.map((p, i) =>
-            i === evt.index
-              ? {
-                  ...p,
-                  status: evt.success ? "sent" : "error",
-                  error: evt.success ? undefined : evt.error,
-                  dryRun: evt.dryRun,
-                }
-              : p
-          ),
-        };
-      }
-      if (evt.type === "delay") {
-        return { ...s, nextIn: evt.ms };
-      }
-      if (evt.type === "halt") {
-        if (evt.reason === "auth_expired") refreshAuthStatus();
-        return { ...s, halt: evt.reason };
-      }
-      return s;
-    });
-  }
-
-  function toggleDryRun() {
-    setSendState((s) => ({ ...s, dryRun: !s.dryRun }));
-  }
 
   const extractedId = extractCompanyId(companyLinkedInId);
 
@@ -413,35 +178,9 @@ function App() {
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
-  async function handleAutoDetect() {
-    const name = company.trim();
-    if (!name) return;
-    setLookupState({ loading: true, error: "" });
-    try {
-      const resp = await fetch("/api/company/lookup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
-      });
-      const data = await resp.json();
-      if (!resp.ok || !data.id) {
-        let errMsg;
-        if (data.error === "not_found") {
-          errMsg = "Couldn't find this company on LinkedIn. Paste the ID manually.";
-        } else if (data.error === "auth_expired") {
-          errMsg = "LinkedIn session expired. Log in again in the Automation panel below.";
-          refreshAuthStatus();
-        } else {
-          errMsg = "Lookup failed. Try again or paste the ID manually.";
-        }
-        setLookupState({ loading: false, error: errMsg });
-        return;
-      }
-      setCompanyLinkedInId(data.id);
-      setLookupState({ loading: false, error: "" });
-    } catch (e) {
-      setLookupState({ loading: false, error: "Lookup failed — check dev server." });
-    }
+  function handleLookupCompany() {
+    const url = buildCompanyLookupUrl(company.trim());
+    window.open(url, "_blank", "noopener,noreferrer");
   }
 
   return (
@@ -495,10 +234,18 @@ function App() {
 
         <div className="buttons">
           <div className="buttons-row">
-            <button className="btn-generate" disabled={!isValid} onClick={() => handleGenerate("referral")}>
+            <button
+              className="btn-generate"
+              disabled={!isValid}
+              onClick={() => handleGenerate("referral")}
+            >
               👥 Referral Message
             </button>
-            <button className="btn-generate btn-generate--recruiter" disabled={!isValid} onClick={() => handleGenerate("recruiter")}>
+            <button
+              className="btn-generate btn-generate--recruiter"
+              disabled={!isValid}
+              onClick={() => handleGenerate("recruiter")}
+            >
               🎯 Recruiter Message
             </button>
           </div>
@@ -509,11 +256,16 @@ function App() {
       </div>
 
       {/* Find on LinkedIn */}
-      <div className={`find-section ${!company.trim() ? "find-section--disabled" : ""}`}>
+      <div
+        className={`find-section ${
+          !company.trim() ? "find-section--disabled" : ""
+        }`}
+      >
         <div className="find-header">
           <span className="find-title">
             <LinkedInIcon className="linkedin-icon" />
-            Find {msgType === "recruiter" ? "Recruiters" : "Employees"} at {company.trim() || "Company"}
+            Find {msgType === "recruiter" ? "Recruiters" : "Employees"} at{" "}
+            {company.trim() || "Company"}
           </span>
         </div>
 
@@ -531,40 +283,51 @@ function App() {
 
         <div className="company-id-label">
           <span className="company-id-header">
-            LinkedIn Company ID <span className="optional">(auto-detected)</span>
-            <button
-              type="button"
-              className="auto-detect-btn"
-              disabled={!company.trim() || lookupState.loading}
-              onClick={handleAutoDetect}
-            >
-              {lookupState.loading ? "Detecting…" : "🔍 Auto-detect"}
-            </button>
+            LinkedIn Company ID{" "}
+            <span className="optional">(for accurate results)</span>
+            {company.trim() && (
+              <button
+                type="button"
+                className="lookup-link"
+                onClick={handleLookupCompany}
+              >
+                Find it ↗
+              </button>
+            )}
           </span>
           <input
             value={companyLinkedInId}
             onChange={(e) => setCompanyLinkedInId(e.target.value)}
-            placeholder="Click Auto-detect, or paste ID/URL manually"
+            placeholder="e.g. 3015  or  linkedin.com/company/3015"
           />
-          {lookupState.error && (
-            <span className="company-id-warn">⚠ {lookupState.error}</span>
+          {companyLinkedInId && !extractedId && (
+            <span className="company-id-warn">
+              ⚠ Not a valid numeric ID — will fall back to keyword search.
+            </span>
           )}
-          {!lookupState.error && companyLinkedInId && !extractedId && (
-            <span className="company-id-warn">⚠ Not a valid numeric ID — will fall back to keyword search.</span>
-          )}
-          {!lookupState.error && extractedId && (
-            <span className="company-id-ok">✓ Using faceted search for company ID <strong>{extractedId}</strong></span>
+          {extractedId && (
+            <span className="company-id-ok">
+              ✓ Using faceted search for company ID <strong>{extractedId}</strong>
+            </span>
           )}
         </div>
 
         <div className="search-buttons">
-          <button className="btn-linkedin" disabled={!company.trim()} onClick={() => handleFindEmployees(false)}>
+          <button
+            className="btn-linkedin"
+            disabled={!company.trim()}
+            onClick={() => handleFindEmployees(false)}
+          >
             <LinkedInIcon className="btn-icon" />
             Search on LinkedIn
           </button>
-          <button className="btn-linkedin btn-linkedin--connections" disabled={!company.trim()} onClick={() => handleFindEmployees(true)}>
+          <button
+            className="btn-linkedin btn-linkedin--connections"
+            disabled={!company.trim()}
+            onClick={() => handleFindEmployees(true)}
+          >
             <svg className="btn-icon" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
+              <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" />
             </svg>
             My Connections
           </button>
@@ -572,9 +335,15 @@ function App() {
 
         <p className="find-hint">
           {extractedId ? (
-            <>🎯 <strong>Accurate mode:</strong> filtering by company ID · <strong>My Connections</strong> — only your 1st-degree connections</>
+            <>
+              🎯 <strong>Accurate mode:</strong> filtering by company ID ·{" "}
+              <strong>My Connections</strong> — only your 1st-degree connections
+            </>
           ) : (
-            <>🔍 <strong>Keyword mode:</strong> results may be fuzzy — paste the Company ID above for exact matches</>
+            <>
+              🔍 <strong>Keyword mode:</strong> results may be fuzzy — paste the
+              Company ID above for exact matches
+            </>
           )}
         </p>
       </div>
@@ -584,7 +353,9 @@ function App() {
         <div className="output">
           <div className="output-header">
             <h2>
-              {msgType === "recruiter" ? "🎯 Recruiter Message" : "👥 Referral Message"}
+              {msgType === "recruiter"
+                ? "🎯 Recruiter Message"
+                : "👥 Referral Message"}
             </h2>
             <button className="btn-copy" onClick={handleCopy}>
               {copied ? "✓ Copied!" : "Copy"}
@@ -592,298 +363,6 @@ function App() {
           </div>
           <pre className="message">{message}</pre>
         </div>
-      )}
-
-      {/* ── LinkedIn Automation ─────────────────────────────── */}
-      <AutomationPanel
-        auth={auth}
-        loginInFlight={loginInFlight}
-        onLogin={handleLogin}
-        onLogout={handleLogout}
-        onRefresh={refreshAuthStatus}
-        company={company.trim()}
-        hasMessage={!!message}
-        searchState={searchState}
-        onFind={handleFindConnections}
-        canSearch={!!company.trim()}
-        selected={selected}
-        onToggle={toggleSelected}
-        onToggleAll={toggleSelectAll}
-        sendState={sendState}
-        onSend={handleSendBatch}
-        onToggleDryRun={toggleDryRun}
-      />
-    </div>
-  );
-}
-
-// ── Automation Panel ─────────────────────────────────────────
-// Shows the LinkedIn session state and exposes login/logout.
-// Phases 3-5 will extend this with search/send actions.
-function AutomationPanel({
-  auth,
-  loginInFlight,
-  onLogin,
-  onLogout,
-  onRefresh,
-  company,
-  hasMessage,
-  searchState,
-  onFind,
-  canSearch,
-  selected,
-  onToggle,
-  onToggleAll,
-  sendState,
-  onSend,
-  onToggleDryRun,
-}) {
-  const { status, reason } = auth;
-
-  const statusMeta = {
-    unknown:   { dot: "dot--idle",     label: "Initialising…" },
-    checking:  { dot: "dot--checking", label: "Checking session…" },
-    loggedIn:  { dot: "dot--ok",       label: "Connected to LinkedIn" },
-    loggedOut: { dot: "dot--off",      label: "Not connected" },
-  }[status];
-
-  return (
-    <div className="automation">
-      <div className="automation-header">
-        <span className="automation-title">🤖 LinkedIn Automation</span>
-        <div className={`status-pill status-pill--${status}`}>
-          <span className={`dot ${statusMeta.dot}`} />
-          {statusMeta.label}
-        </div>
-      </div>
-
-      {status === "loggedOut" && (
-        <>
-          <p className="automation-hint">
-            Log in once to enable finding connections and auto-sending messages.
-            A browser window will open — sign in, and your session stays saved.
-          </p>
-          <div className="automation-actions">
-            <button
-              className="btn-linkedin"
-              disabled={loginInFlight}
-              onClick={onLogin}
-            >
-              {loginInFlight ? "Waiting for login…" : "🔐 Log in to LinkedIn"}
-            </button>
-            <button className="btn-reset automation-refresh" onClick={onRefresh}>
-              Refresh
-            </button>
-          </div>
-          {reason && reason !== "no_session" && reason !== "cleared" && (
-            <p className="automation-reason">Last check: {reason}</p>
-          )}
-        </>
-      )}
-
-      {status === "loggedIn" && (
-        <>
-          {!hasMessage && (
-            <p className="automation-hint">
-              Generate a message first, then find connections at <strong>{company || "the company"}</strong> to message.
-            </p>
-          )}
-
-          {hasMessage && (
-            <>
-              <div className="automation-actions">
-                <button
-                  className="btn-linkedin"
-                  disabled={!canSearch || searchState.loading}
-                  onClick={onFind}
-                >
-                  {searchState.loading
-                    ? "Searching LinkedIn…"
-                    : `🔍 Find my connections at ${company || "company"}`}
-                </button>
-              </div>
-
-              {searchState.error && (
-                <p className="automation-error">⚠ {searchState.error}</p>
-              )}
-
-              {searchState.results.length > 0 && (
-                <>
-                  <ConnectionList
-                    results={searchState.results}
-                    selected={selected}
-                    onToggle={onToggle}
-                    onToggleAll={onToggleAll}
-                  />
-                  <SendControls
-                    selectedCount={selected.size}
-                    sendState={sendState}
-                    onSend={onSend}
-                    onToggleDryRun={onToggleDryRun}
-                  />
-                </>
-              )}
-
-              {!searchState.loading &&
-                !searchState.error &&
-                searchState.results.length === 0 && (
-                  <p className="automation-hint automation-hint--muted">
-                    Click the button above to find 1st-degree connections
-                    at <strong>{company || "this company"}</strong>.
-                  </p>
-                )}
-            </>
-          )}
-
-          <div className="automation-footer-actions">
-            <button className="btn-reset automation-refresh" onClick={onLogout}>
-              Log out
-            </button>
-            <button className="btn-reset automation-refresh" onClick={onRefresh}>
-              Refresh status
-            </button>
-          </div>
-        </>
-      )}
-
-      {(status === "unknown" || status === "checking") && (
-        <p className="automation-hint">Checking LinkedIn session status…</p>
-      )}
-
-      <p className="automation-legal">
-        ⚠️ LinkedIn's ToS restricts automation. Use sparingly and at your own risk.
-      </p>
-    </div>
-  );
-}
-
-// ── Connection result list with selectable rows ──────────────
-function ConnectionList({ results, selected, onToggle, onToggleAll }) {
-  const allSelected = selected.size === results.length;
-  return (
-    <div className="connection-list">
-      <div className="connection-list-header">
-        <label className="select-all">
-          <input
-            type="checkbox"
-            checked={allSelected}
-            onChange={onToggleAll}
-          />
-          <span>
-            {allSelected ? "Unselect all" : "Select all"} ({selected.size}/{results.length})
-          </span>
-        </label>
-      </div>
-      <ul className="connection-items">
-        {results.map((r) => (
-          <li key={r.profileUrl} className="connection-item">
-            <label>
-              <input
-                type="checkbox"
-                checked={selected.has(r.profileUrl)}
-                onChange={() => onToggle(r.profileUrl)}
-              />
-              {r.avatar ? (
-                <img src={r.avatar} alt="" className="avatar" />
-              ) : (
-                <span className="avatar avatar--placeholder">
-                  {(r.name || "?")[0]}
-                </span>
-              )}
-              <div className="connection-info">
-                <div className="connection-name">
-                  {r.name}
-                  {r.connectionDegree && (
-                    <span className="connection-degree">
-                      {" "}
-                      · {r.connectionDegree}
-                    </span>
-                  )}
-                </div>
-                {r.title && (
-                  <div className="connection-title">{r.title}</div>
-                )}
-              </div>
-              <a
-                href={r.profileUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="connection-link"
-                onClick={(e) => e.stopPropagation()}
-              >
-                ↗
-              </a>
-            </label>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-// ── Send Controls + per-target progress ──────────────────────
-function SendControls({ selectedCount, sendState, onSend, onToggleDryRun }) {
-  const { inFlight, dryRun, progress, halt } = sendState;
-  const sentCount = progress.filter((p) => p.status === "sent").length;
-  const errorCount = progress.filter((p) => p.status === "error").length;
-  const activeCount = progress.filter((p) => p.status === "sending").length;
-
-  return (
-    <div className="send-controls">
-      <div className="send-row">
-        <label className="dry-run-toggle">
-          <input
-            type="checkbox"
-            checked={dryRun}
-            onChange={onToggleDryRun}
-            disabled={inFlight}
-          />
-          <span>
-            Dry run
-            <span className="dry-run-help"> (types but doesn't send)</span>
-          </span>
-        </label>
-        <button
-          className="btn-linkedin"
-          disabled={selectedCount === 0 || inFlight}
-          onClick={onSend}
-        >
-          {inFlight
-            ? `Sending… (${sentCount}/${progress.length})`
-            : `${dryRun ? "🧪 Dry run" : "🚀 Send"} to ${selectedCount} selected`}
-        </button>
-      </div>
-
-      {progress.length > 0 && (
-        <ul className="send-progress">
-          {progress.map((p) => (
-            <li key={p.profileUrl} className={`send-progress-item status-${p.status}`}>
-              <span className="send-progress-icon">
-                {p.status === "pending" && "⏸"}
-                {p.status === "sending" && "⏳"}
-                {p.status === "sent" && (p.dryRun ? "🧪" : "✅")}
-                {p.status === "error" && "❌"}
-              </span>
-              <span className="send-progress-name">{p.name}</span>
-              {p.error && <span className="send-progress-error">{p.error}</span>}
-              {p.status === "sent" && p.dryRun && (
-                <span className="send-progress-note">dry-run ok</span>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {halt && (
-        <p className="automation-error">
-          🛑 Batch halted: <strong>{halt}</strong>. Re-check your session before retrying.
-        </p>
-      )}
-
-      {!inFlight && progress.length > 0 && (
-        <p className="send-summary">
-          {sentCount} sent · {errorCount} failed · {progress.length - sentCount - errorCount - activeCount} pending
-        </p>
       )}
     </div>
   );

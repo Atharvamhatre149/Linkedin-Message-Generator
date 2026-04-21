@@ -23,9 +23,3 @@ dist-ssr
 *.sln
 *.sw?
 .claude/
-
-# Playwright session cookies — contains LinkedIn auth, must never be committed
-.session.json
-server/.session.json
-playwright-report/
-test-results/
