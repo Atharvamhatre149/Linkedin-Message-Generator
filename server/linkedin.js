@@ -80,6 +80,37 @@ async function saveSession(context) {
   await context.storageState({ path: SESSION_PATH })
 }
 
+/**
+ * Same as saveSession but refuses to persist the context's state when the
+ * context no longer holds a valid `li_at` cookie.
+ *
+ * This is important because LinkedIn sometimes strips auth cookies when it
+ * redirects us to /authwall or rate-limits a request. Without this guard,
+ * a brief redirect during a lookup/search would overwrite the good
+ * .session.json on disk with an empty one — the user would appear logged
+ * out within seconds of a single failed Playwright action.
+ *
+ * Returns true if it wrote, false if it skipped.
+ */
+async function saveSessionIfValid(context) {
+  try {
+    const cookies = await context.cookies('https://www.linkedin.com')
+    const liAt = cookies.find((c) => c.name === 'li_at')
+    if (!liAt || !liAt.value || liAt.value.length < 20) {
+      console.warn(
+        '[linkedin] skipping session save — context has no valid li_at ' +
+          '(likely hit authwall/rate-limit). Keeping existing .session.json.'
+      )
+      return false
+    }
+    await context.storageState({ path: SESSION_PATH })
+    return true
+  } catch (e) {
+    console.warn('[linkedin] saveSessionIfValid failed:', e?.message)
+    return false
+  }
+}
+
 // Closes the shared browser. Call from a SIGINT handler in vite.config.js.
 export async function shutdown() {
   if (!browserPromise) return
@@ -153,25 +184,47 @@ export async function login({ timeoutMs = 180_000 } = {}) {
 }
 
 /**
- * Quick probe: open the feed using the saved session. If we land on /feed,
- * the session is still valid; otherwise it's expired or cleared.
+ * Cheap local check: does the saved session file contain a plausible
+ * `li_at` cookie?
+ *
+ * We deliberately do NOT hit LinkedIn's `/feed` here even though that
+ * would give a definitive yes/no. Two reasons:
+ *   1. /api/auth/status is called on every UI mount; a network probe
+ *      every time adds seconds to the first render.
+ *   2. Every automated hit to LinkedIn contributes to bot-scoring —
+ *      and since the next real operation (lookup/search/send) will
+ *      return `auth_expired` anyway if the server invalidated the
+ *      session, the extra probe buys us nothing.
+ *
+ * If you ever want a full network probe, call `deepVerifySession()`.
  */
 export async function verifySession() {
   if (!hasSession()) return { valid: false, reason: 'no_session' }
-
-  // Cheap guard — if the file exists but is missing li_at, the login flow
-  // never fully completed. Skip the network round-trip in that case.
   try {
     const raw = fs.readFileSync(SESSION_PATH, 'utf8')
     const parsed = JSON.parse(raw)
-    const hasLiAt = (parsed.cookies || []).some(
+    const liAt = (parsed.cookies || []).find(
       (c) => c.name === 'li_at' && c.value && c.value.length > 20
     )
-    if (!hasLiAt) return { valid: false, reason: 'missing_li_at' }
+    if (!liAt) return { valid: false, reason: 'missing_li_at' }
+    // Also check cookie expiry — LinkedIn sets ~1 year; if it's in the past
+    // the cookie is dead even if it exists.
+    if (liAt.expires && liAt.expires > 0 && liAt.expires * 1000 < Date.now()) {
+      return { valid: false, reason: 'li_at_expired' }
+    }
+    return { valid: true, reason: 'ok_file' }
   } catch {
     return { valid: false, reason: 'session_unreadable' }
   }
+}
 
+/**
+ * Optional: full network-round-trip probe for when the user explicitly
+ * asks to verify (e.g. after a long pause). Not called automatically.
+ */
+export async function deepVerifySession() {
+  const cheap = await verifySession()
+  if (!cheap.valid) return cheap
   const context = await newContext()
   const page = await context.newPage()
   try {
@@ -182,9 +235,7 @@ export async function verifySession() {
     const valid = /linkedin\.com\/feed/.test(page.url())
     return {
       valid,
-      reason: valid
-        ? 'ok'
-        : 'redirected_to_' + new URL(page.url()).pathname,
+      reason: valid ? 'ok_network' : 'redirected_to_' + new URL(page.url()).pathname,
     }
   } catch (e) {
     return { valid: false, reason: e?.message || 'probe_failed' }
@@ -194,7 +245,7 @@ export async function verifySession() {
 }
 
 // ── Company ID lookup ────────────────────────────────────────
-// URN patterns that LinkedIn embeds on company pages / search results.
+// URN patterns that LinkedIn embeds in its JSON payloads / HTML.
 // Listed from most specific to least; first match wins.
 const COMPANY_URN_PATTERNS = [
   /urn:li:fsd_company:(\d+)/,
@@ -202,117 +253,205 @@ const COMPANY_URN_PATTERNS = [
   /urn:li:company:(\d+)/,
 ]
 
+const authExpiredError = () => {
+  const err = new Error('auth_expired')
+  err.code = 'auth_expired'
+  return err
+}
+
 /**
- * Given a company name, return its numeric LinkedIn ID + display name.
- * Strategy:
- *   1. Open the authenticated people/company search for that keyword.
- *   2. Grab the first company result's link.
- *   3. If the URL already contains a numeric ID → done.
- *   4. Otherwise navigate to the company page and grep its HTML for a
- *      `urn:li:*_company:<id>` token (these are always present in the
- *      embedded JSON that LinkedIn ships for the client bundle).
- * Returns null when nothing matches.
- * Throws { code: 'auth_expired' } when the saved session is dead.
+ * Extract the CSRF token LinkedIn expects on Voyager API calls.
+ * It's just the JSESSIONID cookie value with surrounding quotes stripped.
  */
-export async function lookupCompany(name) {
-  if (!name || !name.trim()) return null
-  if (!hasSession()) {
-    const err = new Error('auth_expired')
-    err.code = 'auth_expired'
-    throw err
-  }
+async function getCsrfToken(context) {
+  const cookies = await context.cookies('https://www.linkedin.com')
+  const js = cookies.find((c) => c.name === 'JSESSIONID')
+  if (!js) return null
+  return js.value.replace(/^"+|"+$/g, '')
+}
 
-  const context = await newContext()
-  const page = await context.newPage()
+/**
+ * Primary lookup path: the Voyager typeahead API.
+ * This is the same endpoint the "Add a company" input in the people-search
+ * facet dropdown calls, so its results include the exact numeric IDs that
+ * LinkedIn itself uses for currentCompany=[] filters.
+ */
+async function lookupViaTypeahead(context, name) {
+  const csrf = await getCsrfToken(context)
+  if (!csrf) throw authExpiredError()
 
-  try {
-    // 1. Do a companies-scoped search.
-    const searchUrl =
-      'https://www.linkedin.com/search/results/companies/?keywords=' +
-      encodeURIComponent(name.trim())
+  const keywords = encodeURIComponent(name.trim())
+  const url =
+    'https://www.linkedin.com/voyager/api/typeahead/hitsV2' +
+    `?keywords=${keywords}` +
+    '&q=blended' +
+    '&origin=FACETED_SEARCH' +
+    '&types=List(COMPANY)'
 
-    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 20_000 })
+  const resp = await context.request.get(url, {
+    headers: {
+      'Csrf-Token': csrf,
+      'Accept': 'application/vnd.linkedin.normalized+json+2.1',
+      'x-li-lang': 'en_US',
+      'x-restli-protocol-version': '2.0.0',
+      Referer: 'https://www.linkedin.com/search/results/people/',
+    },
+    timeout: 12_000,
+  })
 
-    if (/\/(login|authwall|checkpoint)/.test(page.url())) {
-      const err = new Error('auth_expired')
-      err.code = 'auth_expired'
-      throw err
-    }
+  if (resp.status() === 401 || resp.status() === 403) throw authExpiredError()
+  if (!resp.ok()) return null
 
-    // Give React / Voyager time to hydrate the result list. We can't rely on
-    // a single stable selector because LinkedIn ships two or three layouts
-    // concurrently (A/B testing). Waiting on the network to go idle is safer.
-    await page
-      .waitForLoadState('networkidle', { timeout: 8_000 })
-      .catch(() => {})
+  const data = await resp.json().catch(() => null)
+  if (!data) return null
 
-    // 2. Pick the first company link. LinkedIn renders these as
-    //    <a href="/company/{slug-or-id}/...">.
-    const firstHref = await page.evaluate(() => {
-      const candidates = document.querySelectorAll('a[href*="/company/"]')
-      for (const a of candidates) {
-        const href = a.getAttribute('href') || ''
-        // Skip navigation links like /company/browse/... or /company/setup/.
-        if (/\/company\/(browse|setup|signup|admin)/.test(href)) continue
-        if (!/\/company\/[^/?#]+/.test(href)) continue
-        return a.href
-      }
-      return null
-    })
+  // Voyager response shape varies; scan every element for a company URN.
+  const allElements = [
+    ...(Array.isArray(data.elements) ? data.elements : []),
+    ...(Array.isArray(data.included) ? data.included : []),
+  ]
 
-    if (!firstHref) return null
+  for (const el of allElements) {
+    const urnSources = [
+      el.targetUrn,
+      el.objectUrn,
+      el.trackingUrn,
+      el.entityLockupView?.navigationUrl,
+      el.entityLockupView?.actorUrn,
+      el.image?.attributes?.[0]?.sourceType,
+    ].filter(Boolean)
 
-    // Try to harvest a display name from the first result card while we're here.
-    const displayName = await page
-      .evaluate((href) => {
-        const a = document.querySelector(`a[href="${new URL(href).pathname}"]`)
-        const card =
-          a?.closest('.reusable-search__result-container, .entity-result, li') ||
-          a?.parentElement
-        const nameEl = card?.querySelector(
-          '.entity-result__title-text a span[aria-hidden="true"], ' +
-            '.entity-result__title-text, ' +
-            'span[aria-hidden="true"]'
-        )
-        return nameEl?.textContent?.trim() || ''
-      }, firstHref)
-      .catch(() => '')
-
-    // 3. Fast path — URL already has the numeric ID.
-    const inlineId = firstHref.match(/\/company\/(\d+)(?:[/?#]|$)/)
-    if (inlineId) {
-      return { id: inlineId[1], name: displayName || name.trim(), url: firstHref }
-    }
-
-    // 4. Slow path — follow the slug URL and grep the HTML for a company URN.
-    await page.goto(firstHref, { waitUntil: 'domcontentloaded', timeout: 20_000 })
-    await page
-      .waitForLoadState('networkidle', { timeout: 8_000 })
-      .catch(() => {})
-
-    if (/\/(login|authwall|checkpoint)/.test(page.url())) {
-      const err = new Error('auth_expired')
-      err.code = 'auth_expired'
-      throw err
-    }
-
-    const html = await page.content()
-    for (const pat of COMPANY_URN_PATTERNS) {
-      const m = html.match(pat)
-      if (m) {
-        const title = (await page.title()).replace(/\s*\|\s*LinkedIn.*$/i, '').trim()
-        return {
-          id: m[1],
-          name: displayName || title || name.trim(),
-          url: page.url(),
+    for (const src of urnSources) {
+      for (const pat of COMPANY_URN_PATTERNS) {
+        const m = String(src).match(pat)
+        if (m) {
+          const displayName =
+            el.title?.text ||
+            el.primarySubtitle?.text ||
+            el.entityLockupView?.title?.text ||
+            name.trim()
+          return {
+            id: m[1],
+            name: displayName,
+            url: `https://www.linkedin.com/company/${m[1]}/`,
+            source: 'typeahead',
+          }
         }
       }
     }
+  }
+  return null
+}
 
+/**
+ * Fallback lookup path: open the people-search UI, click the
+ * "Current company" facet, type the name into "Add a company", and
+ * capture the typeahead response the browser itself fires.
+ * Slower than the direct API call but survives API shape changes.
+ */
+async function lookupViaUiFacet(context, name) {
+  const page = await context.newPage()
+  try {
+    await page.goto(
+      'https://www.linkedin.com/search/results/people/?network=%5B%22F%22%5D',
+      { waitUntil: 'domcontentloaded', timeout: 20_000 }
+    )
+    if (/\/(login|authwall|checkpoint)/.test(page.url())) {
+      throw authExpiredError()
+    }
+    await page.waitForLoadState('networkidle', { timeout: 8_000 }).catch(() => {})
+
+    // Open the "Current company" filter.
+    const facetBtn = page
+      .locator('button:has-text("Current company"), button:has-text("Current companies")')
+      .first()
+    await facetBtn.waitFor({ timeout: 8_000 })
+    await facetBtn.click()
+
+    // Wait for the dropdown's search input (placeholder "Add a company").
+    const searchInput = page
+      .locator(
+        'input[placeholder*="Add a company" i], ' +
+          'input[placeholder*="Search by company" i], ' +
+          'input[aria-label*="company" i]'
+      )
+      .first()
+    await searchInput.waitFor({ timeout: 8_000 })
+
+    // Capture the typeahead response as the user types.
+    const responsePromise = page
+      .waitForResponse(
+        (r) => /typeahead/i.test(r.url()) && r.status() === 200,
+        { timeout: 12_000 }
+      )
+      .catch(() => null)
+
+    await searchInput.fill('')
+    await searchInput.type(name.trim(), { delay: _internal.jitter(40, 90) })
+
+    const response = await responsePromise
+    if (!response) return null
+    const data = await response.json().catch(() => null)
+    if (!data) return null
+
+    const elements = [
+      ...(Array.isArray(data.elements) ? data.elements : []),
+      ...(Array.isArray(data.included) ? data.included : []),
+    ]
+    for (const el of elements) {
+      const urnSources = [el.targetUrn, el.objectUrn, el.trackingUrn].filter(Boolean)
+      for (const src of urnSources) {
+        for (const pat of COMPANY_URN_PATTERNS) {
+          const m = String(src).match(pat)
+          if (m) {
+            const displayName =
+              el.title?.text ||
+              el.primarySubtitle?.text ||
+              name.trim()
+            return {
+              id: m[1],
+              name: displayName,
+              url: `https://www.linkedin.com/company/${m[1]}/`,
+              source: 'ui_facet',
+            }
+          }
+        }
+      }
+    }
     return null
   } finally {
-    // Refresh cookies + tidy up.
-    await saveSession(context).catch(() => {})
+    await page.close().catch(() => {})
+  }
+}
+
+/**
+ * Public entry point. Tries the direct Voyager typeahead first; if that
+ * returns nothing (or fails with a non-auth error), falls back to driving
+ * the people-search UI — the same flow a user would do manually.
+ *
+ * Returns { id, name, url, source } or null.
+ * Throws { code: 'auth_expired' } when the session is dead.
+ */
+export async function lookupCompany(name) {
+  if (!name || !name.trim()) return null
+  if (!hasSession()) throw authExpiredError()
+
+  const context = await newContext()
+  try {
+    // 1. Fast path — direct typeahead API
+    try {
+      const viaApi = await lookupViaTypeahead(context, name)
+      if (viaApi) return viaApi
+    } catch (e) {
+      if (e?.code === 'auth_expired') throw e
+      // otherwise silently fall through to UI path
+    }
+
+    // 2. Slow path — drive the UI facet search
+    const viaUi = await lookupViaUiFacet(context, name)
+    return viaUi
+  } finally {
+    await saveSessionIfValid(context).catch(() => {})
     await context.close().catch(() => {})
   }
 }
@@ -444,7 +583,7 @@ export async function searchConnections({
 
     return results
   } finally {
-    await saveSession(context).catch(() => {})
+    await saveSessionIfValid(context).catch(() => {})
     await context.close().catch(() => {})
   }
 }
@@ -582,7 +721,7 @@ export async function sendMessage(profileUrl, text, { dryRun = false } = {}) {
 
     return { success: true, sentAt: Date.now() }
   } finally {
-    await saveSession(context).catch(() => {})
+    await saveSessionIfValid(context).catch(() => {})
     await context.close().catch(() => {})
   }
 }
