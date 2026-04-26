@@ -1,5 +1,16 @@
 import { useState } from "react";
 import "./App.css";
+import companyList from "../company_list.json";
+
+// Case-insensitive name → id map; first valid id wins on duplicates
+const COMPANY_MAP = {};
+for (const { company_name, company_id } of companyList) {
+  const key = company_name.toLowerCase();
+  if (!COMPANY_MAP[key] && company_id) {
+    COMPANY_MAP[key] = company_id;
+  }
+}
+const COMPANY_NAMES = [...new Set(companyList.map((c) => c.company_name))];
 
 const FILTERS = [
   { label: "Recruiter", keywords: "recruiter" },
@@ -9,19 +20,14 @@ const FILTERS = [
   { label: "Any Employee", keywords: "" },
 ];
 
-// Common tech-role suggestions shown in the Position/Role dropdown.
-// Users can still type anything custom — this is just autocomplete.
 const ROLE_SUGGESTIONS = [
-  // Generalist SWE ladders
   "Software Engineer",
   "Software Engineer I",
   "Software Engineer II",
   "Senior Software Engineer",
-  // Amazon-style SDE ladder
   "Software Development Engineer",
   "SDE-1",
   "SDE-2",
-  // Stack specialisations
   "Frontend Developer",
   "Frontend Engineer",
   "Backend Developer",
@@ -77,8 +83,6 @@ Atharva Mhatre
 atharvamhatre149@gmail.com`;
 }
 
-// Extract numeric company ID from either a raw number ("3015")
-// or a LinkedIn company URL like https://www.linkedin.com/company/3015/
 function extractCompanyId(input) {
   if (!input) return "";
   const trimmed = input.trim();
@@ -87,30 +91,24 @@ function extractCompanyId(input) {
   return match ? match[1] : "";
 }
 
-function buildLinkedInUrl({ company, companyId, filterKeywords, connectionsOnly }) {
-  const params = new URLSearchParams();
-
-  if (companyId) {
-    // Faceted search — targets the exact company via LinkedIn's internal ID.
-    params.set("origin", "FACETED_SEARCH");
-    params.set("currentCompany", `["${companyId}"]`);
-    if (filterKeywords) params.set("keywords", filterKeywords);
-  } else {
-    // Fallback: keyword search (less precise).
-    const query = filterKeywords ? `${filterKeywords} ${company}` : company;
-    params.set("keywords", query);
-    params.set("origin", "GLOBAL_SEARCH_HEADER");
-  }
-
-  if (connectionsOnly) params.set("network", '["F"]');
-  return `https://www.linkedin.com/search/results/people/?${params.toString()}`;
+// Open connections at this company — to find people to message
+function buildConnectionsUrl(companyId, filterKeywords) {
+  const params = new URLSearchParams({
+    origin: "FACETED_SEARCH",
+    network: '["F"]',
+    currentCompany: `["${companyId}"]`,
+  });
+  if (filterKeywords) params.set("keywords", filterKeywords);
+  return `https://www.linkedin.com/search/results/people/?${params}`;
 }
 
-function buildCompanyLookupUrl(companyName) {
-  const params = new URLSearchParams();
-  params.set("keywords", companyName);
-  params.set("origin", "GLOBAL_SEARCH_HEADER");
-  return `https://www.linkedin.com/search/results/companies/?${params.toString()}`;
+// Keyword search — to find people to send connection requests
+function buildSearchUrl(companyName) {
+  const params = new URLSearchParams({
+    keywords: companyName,
+    origin: "SWITCH_SEARCH_VERTICAL",
+  });
+  return `https://www.linkedin.com/search/results/people/?${params}`;
 }
 
 const LinkedInIcon = ({ className }) => (
@@ -127,12 +125,32 @@ function App() {
   const [companyLinkedInId, setCompanyLinkedInId] = useState("");
   const [message, setMessage] = useState("");
   const [copied, setCopied] = useState(false);
-  const [activeFilter, setActiveFilter] = useState(0);
+  const [activeFilter, setActiveFilter] = useState(4);
   const [msgType, setMsgType] = useState("referral");
+  const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
 
   const extractedId = extractCompanyId(companyLinkedInId);
-
   const isValid = company.trim() && position.trim();
+
+  // Filtered company suggestions (max 10) for the autocomplete dropdown
+  const companyMatches = (() => {
+    const q = company.trim().toLowerCase();
+    if (!q) return COMPANY_NAMES.slice(0, 10);
+    return COMPANY_NAMES.filter((n) => n.toLowerCase().includes(q)).slice(0, 10);
+  })();
+
+  function handleCompanyChange(value) {
+    setCompany(value);
+    const mapped = COMPANY_MAP[value.trim().toLowerCase()];
+    setCompanyLinkedInId(mapped ?? "");
+    setShowCompanyDropdown(true);
+  }
+
+  function handlePickCompany(name) {
+    setCompany(name);
+    setCompanyLinkedInId(COMPANY_MAP[name.toLowerCase()] ?? "");
+    setShowCompanyDropdown(false);
+  }
 
   function handleGenerate(type) {
     const params = {
@@ -165,21 +183,18 @@ function App() {
     setCompanyLinkedInId("");
     setMessage("");
     setCopied(false);
-    setActiveFilter(0);
+    setActiveFilter(4);
+    setShowCompanyDropdown(false);
   }
 
-  function handleFindEmployees(connectionsOnly = false) {
-    const url = buildLinkedInUrl({
-      company: company.trim(),
-      companyId: extractedId,
-      filterKeywords: FILTERS[activeFilter].keywords,
-      connectionsOnly,
-    });
+  function handleMyConnections() {
+    if (!extractedId) return;
+    const url = buildConnectionsUrl(extractedId, FILTERS[activeFilter].keywords);
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
-  function handleLookupCompany() {
-    const url = buildCompanyLookupUrl(company.trim());
+  function handleFindPeople() {
+    const url = buildSearchUrl(company.trim());
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
@@ -187,15 +202,33 @@ function App() {
     <div className="app">
       <h1>LinkedIn Message Generator</h1>
 
-      {/* Form */}
+      {/* ── Form ── */}
       <div className="form">
-        <label>
+        <label className="company-field">
           Company Name <span className="required">*</span>
           <input
             value={company}
-            onChange={(e) => setCompany(e.target.value)}
+            onChange={(e) => handleCompanyChange(e.target.value)}
+            onFocus={() => setShowCompanyDropdown(true)}
+            onBlur={() => setTimeout(() => setShowCompanyDropdown(false), 150)}
             placeholder="e.g. Google"
+            autoComplete="off"
           />
+          {showCompanyDropdown && companyMatches.length > 0 && (
+            <div className="company-dropdown">
+              {companyMatches.map((name) => (
+                <button
+                  type="button"
+                  key={name}
+                  className="company-dropdown-item"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => handlePickCompany(name)}
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+          )}
         </label>
 
         <label>
@@ -255,7 +288,7 @@ function App() {
         </div>
       </div>
 
-      {/* Find on LinkedIn */}
+      {/* ── Find on LinkedIn ── */}
       <div
         className={`find-section ${
           !company.trim() ? "find-section--disabled" : ""
@@ -281,74 +314,44 @@ function App() {
           ))}
         </div>
 
-        <div className="company-id-label">
-          <span className="company-id-header">
-            LinkedIn Company ID{" "}
-            <span className="optional">(for accurate results)</span>
-            {company.trim() && (
-              <button
-                type="button"
-                className="lookup-link"
-                onClick={handleLookupCompany}
-              >
-                Find it ↗
-              </button>
-            )}
-          </span>
-          <input
-            value={companyLinkedInId}
-            onChange={(e) => setCompanyLinkedInId(e.target.value)}
-            placeholder="e.g. 3015  or  linkedin.com/company/3015"
-          />
-          {companyLinkedInId && !extractedId && (
-            <span className="company-id-warn">
-              ⚠ Not a valid numeric ID — will fall back to keyword search.
-            </span>
-          )}
-          {extractedId && (
-            <span className="company-id-ok">
-              ✓ Using faceted search for company ID <strong>{extractedId}</strong>
-            </span>
-          )}
-        </div>
-
         <div className="search-buttons">
           <button
-            className="btn-linkedin"
-            disabled={!company.trim()}
-            onClick={() => handleFindEmployees(false)}
-          >
-            <LinkedInIcon className="btn-icon" />
-            Search on LinkedIn
-          </button>
-          <button
             className="btn-linkedin btn-linkedin--connections"
-            disabled={!company.trim()}
-            onClick={() => handleFindEmployees(true)}
+            disabled={!company.trim() || !extractedId}
+            onClick={handleMyConnections}
+            title={!extractedId ? "Company ID required for connections search" : ""}
           >
             <svg className="btn-icon" viewBox="0 0 24 24" fill="currentColor">
               <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" />
             </svg>
             My Connections
           </button>
+          <button
+            className="btn-linkedin"
+            disabled={!company.trim()}
+            onClick={handleFindPeople}
+          >
+            <LinkedInIcon className="btn-icon" />
+            Find People
+          </button>
         </div>
 
         <p className="find-hint">
           {extractedId ? (
             <>
-              🎯 <strong>Accurate mode:</strong> filtering by company ID ·{" "}
-              <strong>My Connections</strong> — only your 1st-degree connections
+              <strong>My Connections</strong> — message your 1st-degree connections ·{" "}
+              <strong>Find People</strong> — browse all employees to connect
             </>
           ) : (
             <>
-              🔍 <strong>Keyword mode:</strong> results may be fuzzy — paste the
-              Company ID above for exact matches
+              <strong>Find People</strong> opens a keyword search ·{" "}
+              <strong>My Connections</strong> needs a company from the dropdown
             </>
           )}
         </p>
       </div>
 
-      {/* Generated Output */}
+      {/* ── Generated Output ── */}
       {message && (
         <div className="output">
           <div className="output-header">

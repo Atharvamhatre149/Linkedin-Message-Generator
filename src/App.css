@@ -236,7 +236,16 @@ input:focus {
   background: #0f172a;
 }
 
-.auto-detect-btn {
+/* company-id header: left label + right action buttons */
+.company-id-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Auto Lookup button */
+.auto-lookup-btn {
   background: #1e40af;
   border: 1px solid #3b82f6;
   color: #dbeafe;
@@ -249,13 +258,246 @@ input:focus {
   white-space: nowrap;
 }
 
-.auto-detect-btn:hover:not(:disabled) {
+.auto-lookup-btn:hover:not(:disabled) {
   background: #2563eb;
 }
 
-.auto-detect-btn:disabled {
-  opacity: 0.4;
+.auto-lookup-btn:disabled,
+.auto-lookup-btn--loading {
+  opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* Company-name autocomplete dropdown */
+.company-field {
+  position: relative;
+}
+
+.company-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  margin-top: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: #0f172a;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  -webkit-overflow-scrolling: touch;
+}
+
+.company-dropdown-item {
+  display: block;
+  width: 100%;
+  padding: 12px 14px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid #1e293b;
+  color: #e2e8f0;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.company-dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.company-dropdown-item:hover,
+.company-dropdown-item:focus {
+  background: #1e293b;
+  outline: none;
+}
+
+@media (max-width: 480px) {
+  .company-dropdown-item {
+    padding: 14px 14px;
+    font-size: 15px;
+  }
+}
+
+/* Suggestions picker */
+.suggestions-box {
+  margin-top: 6px;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: #0f172a;
+  overflow: hidden;
+}
+
+.suggestions-hint {
+  margin: 0;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #64748b;
+  border-bottom: 1px solid #1e293b;
+}
+
+.suggestion-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 12px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid #1e293b;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+  flex-wrap: wrap;
+}
+
+.suggestion-item:last-child {
+  border-bottom: none;
+}
+
+.suggestion-item:hover {
+  background: #1e293b;
+}
+
+.suggestion-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e2e8f0;
+  flex-shrink: 0;
+}
+
+.suggestion-sub {
+  font-size: 12px;
+  color: #64748b;
+  flex: 1;
+}
+
+.suggestion-id {
+  font-size: 11px;
+  color: #475569;
+  font-family: monospace;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* ── Cookie Settings ── */
+.cookie-settings {
+  margin-top: 16px;
+  border-top: 1px solid #1e293b;
+  padding-top: 12px;
+}
+
+.cookie-settings-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.15s;
+}
+
+.cookie-settings-toggle:hover {
+  color: #94a3b8;
+}
+
+.caret {
+  display: inline-block;
+  transition: transform 0.2s;
+  font-size: 14px;
+}
+
+.caret--open {
+  transform: rotate(180deg);
+}
+
+.cookie-badge {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #14532d;
+  color: #86efac;
+  font-weight: 600;
+}
+
+.cookie-settings-body {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cookie-instructions {
+  margin: 0;
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.6;
+}
+
+.cookie-instructions strong {
+  color: #94a3b8;
+}
+
+.cookie-instructions code,
+.cookie-field code {
+  font-family: monospace;
+  font-size: 11px;
+  background: #0f172a;
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: #93c5fd;
+}
+
+.cookie-instructions kbd {
+  font-family: monospace;
+  font-size: 11px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: #e2e8f0;
+}
+
+.cookie-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #64748b;
+}
+
+.cookie-field input {
+  padding: 8px 10px;
+  font-size: 12px;
+  background: #0f172a;
+  border-color: #1e293b;
+}
+
+.cookie-field input:focus {
+  border-color: #3b82f6;
+}
+
+.cookie-clear-btn {
+  align-self: flex-start;
+  background: transparent;
+  border: 1px solid #334155;
+  color: #64748b;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 5px 10px;
+  border-radius: 6px;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.cookie-clear-btn:hover {
+  border-color: #f87171;
+  color: #fca5a5;
 }
 
 .company-id-warn {

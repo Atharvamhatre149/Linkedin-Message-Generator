@@ -23,3 +23,7 @@ dist-ssr
 *.sln
 *.sw?
 .claude/
+
+# Local scraping artifacts
+companies.csv
+company_list_backup.json

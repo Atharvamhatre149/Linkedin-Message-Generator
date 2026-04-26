@@ -1,0 +1,674 @@
+[
+    {
+        "company_name": "Google",
+        "company_id": "1441"
+    },
+    {
+        "company_name": "Meta",
+        "company_id": "10667"
+    },
+    {
+        "company_name": "Amazon Advertising",
+        "company_id": "43610"
+    },
+    {
+        "company_name": "The Trade Desk",
+        "company_id": "892001"
+    },
+    {
+        "company_name": "AppLovin",
+        "company_id": "3076102"
+    },
+    {
+        "company_name": "Unity Technologies",
+        "company_id": "212669"
+    },
+    {
+        "company_name": "IronSource",
+        "company_id": "2657359"
+    },
+    {
+        "company_name": "Digital Turbine",
+        "company_id": "611576"
+    },
+    {
+        "company_name": "Criteo",
+        "company_id": "37209"
+    },
+    {
+        "company_name": "PubMatic",
+        "company_id": "167624"
+    },
+    {
+        "company_name": "Magnite",
+        "company_id": "67332446"
+    },
+    {
+        "company_name": "LiveRamp",
+        "company_id": "2241197"
+    },
+    {
+        "company_name": "Taboola",
+        "company_id": "128707"
+    },
+    {
+        "company_name": "Outbrain",
+        "company_id": "147120"
+    },
+    {
+        "company_name": "InMobi",
+        "company_id": "104812249"
+    },
+    {
+        "company_name": "Verizon Media",
+        "company_id": "13004657"
+    },
+    {
+        "company_name": "Xandr",
+        "company_id": "18829324"
+    },
+    {
+        "company_name": "Basis Technologies",
+        "company_id": "74743171"
+    },
+    {
+        "company_name": "AdRoll",
+        "company_id": "30665330"
+    },
+    {
+        "company_name": "Cardlytics",
+        "company_id": "208544"
+    },
+    {
+        "company_name": "Tremor International",
+        "company_id": "361348"
+    },
+    {
+        "company_name": "Innovid",
+        "company_id": "733622"
+    },
+    {
+        "company_name": "JPMorgan Chase",
+        "company_id": "1068"
+    },
+    {
+        "company_name": "Goldman Sachs",
+        "company_id": "1382"
+    },
+    {
+        "company_name": "Morgan Stanley",
+        "company_id": "497017"
+    },
+    {
+        "company_name": "BlackRock",
+        "company_id": "4764"
+    },
+    {
+        "company_name": "Visa",
+        "company_id": "2190"
+    },
+    {
+        "company_name": "Mastercard",
+        "company_id": "3015"
+    },
+    {
+        "company_name": "Citi",
+        "company_id": "11448"
+    },
+    {
+        "company_name": "Wells Fargo",
+        "company_id": "1235"
+    },
+    {
+        "company_name": "HSBC",
+        "company_id": "1241"
+    },
+    {
+        "company_name": "Barclays",
+        "company_id": "361348"
+    },
+    {
+        "company_name": "Deutsche Bank",
+        "company_id": "1262"
+    },
+    {
+        "company_name": "UBS",
+        "company_id": "1214"
+    },
+    {
+        "company_name": "BNP Paribas",
+        "company_id": "1508"
+    },
+    {
+        "company_name": "Fidelity Investments",
+        "company_id": "1307"
+    },
+    {
+        "company_name": "Charles Schwab",
+        "company_id": "1855"
+    },
+    {
+        "company_name": "PayPal",
+        "company_id": "1482"
+    },
+    {
+        "company_name": "Stripe",
+        "company_id": "2135371"
+    },
+    {
+        "company_name": "Robinhood",
+        "company_id": "3254263"
+    },
+    {
+        "company_name": "Coinbase",
+        "company_id": "2857634"
+    },
+    {
+        "company_name": "Revolut",
+        "company_id": "5356541"
+    },
+    {
+        "company_name": "Klarna",
+        "company_id": "748731"
+    },
+    {
+        "company_name": "Affirm",
+        "company_id": "2963249"
+    },
+    {
+        "company_name": "SoFi",
+        "company_id": "2301992"
+    },
+    {
+        "company_name": "Plaid",
+        "company_id": "2105"
+    },
+    {
+        "company_name": "Brex",
+        "company_id": "361348"
+    },
+    {
+        "company_name": "Chime",
+        "company_id": "98562"
+    },
+    {
+        "company_name": "Nubank",
+        "company_id": "3767529"
+    },
+    {
+        "company_name": "Square",
+        "company_id": "229704"
+    },
+    {
+        "company_name": "American Express",
+        "company_id": "1277"
+    },
+    {
+        "company_name": "Apple",
+        "company_id": "162479"
+    },
+    {
+        "company_name": "Microsoft",
+        "company_id": "1035"
+    },
+    {
+        "company_name": "Amazon",
+        "company_id": "1586"
+    },
+    {
+        "company_name": "Nvidia",
+        "company_id": "3608"
+    },
+    {
+        "company_name": "Tesla",
+        "company_id": "162479"
+    },
+    {
+        "company_name": "IBM",
+        "company_id": "1009"
+    },
+    {
+        "company_name": "Intel",
+        "company_id": "361348"
+    },
+    {
+        "company_name": "Oracle",
+        "company_id": "1028"
+    },
+    {
+        "company_name": "Salesforce",
+        "company_id": "3185"
+    },
+    {
+        "company_name": "Adobe",
+        "company_id": "1480"
+    },
+    {
+        "company_name": "Spotify",
+        "company_id": "207470"
+    },
+    {
+        "company_name": "Airbnb",
+        "company_id": "309694"
+    },
+    {
+        "company_name": "Uber",
+        "company_id": "361843"
+    },
+    {
+        "company_name": "Shopify",
+        "company_id": "784652"
+    },
+    {
+        "company_name": "Samsung",
+        "company_id": "543686"
+    },
+    {
+        "company_name": "Qualcomm",
+        "company_id": "2017"
+    },
+    {
+        "company_name": "AMD",
+        "company_id": "1497"
+    },
+    {
+        "company_name": "Cisco",
+        "company_id": "1063"
+    },
+    {
+        "company_name": "SAP",
+        "company_id": "1115"
+    },
+    {
+        "company_name": "Infosys",
+        "company_id": "1283"
+    },
+    {
+        "company_name": "Wipro",
+        "company_id": "1318"
+    },
+    {
+        "company_name": "TCS",
+        "company_id": "361348"
+    },
+    {
+        "company_name": "Cognizant",
+        "company_id": "1680"
+    },
+    {
+        "company_name": "ServiceNow",
+        "company_id": "29352"
+    },
+    {
+        "company_name": "Workday",
+        "company_id": "17719"
+    },
+    {
+        "company_name": "Palantir",
+        "company_id": "64898"
+    },
+    {
+        "company_name": "Snowflake",
+        "company_id": "361348"
+    },
+    {
+        "company_name": "Databricks",
+        "company_id": "3477522"
+    },
+    {
+        "company_name": "OpenAI",
+        "company_id": "11130470"
+    },
+    {
+        "company_name": "Anthropic",
+        "company_id": "7936402"
+    },
+    {
+        "company_name": "SpaceX",
+        "company_id": "30846"
+    },
+    {
+        "company_name": "Twilio",
+        "company_id": "34714233"
+    },
+    {
+        "company_name": "Atlassian",
+        "company_id": "22688"
+    },
+    {
+        "company_name": "HubSpot",
+        "company_id": "68529"
+    },
+    {
+        "company_name": "Zendesk",
+        "company_id": "418095"
+    },
+    {
+        "company_name": "Datadog",
+        "company_id": "1066442"
+    },
+    {
+        "company_name": "HashiCorp",
+        "company_id": "2830763"
+    },
+    {
+        "company_name": "Cloudflare",
+        "company_id": "407222"
+    },
+    {
+        "company_name": "CrowdStrike",
+        "company_id": "2497653"
+    },
+    {
+        "company_name": "Okta",
+        "company_id": "15234961"
+    },
+    {
+        "company_name": "Splunk",
+        "company_id": "20226"
+    },
+    {
+        "company_name": "Elastic",
+        "company_id": "12866722"
+    },
+    {
+        "company_name": "Confluent",
+        "company_id": "88873"
+    },
+    {
+        "company_name": "Figma",
+        "company_id": "3650502"
+    },
+    {
+        "company_name": "Notion",
+        "company_id": "120213"
+    },
+    {
+        "company_name": "Airtable",
+        "company_id": "3991822"
+    },
+    {
+        "company_name": "Canva",
+        "company_id": "2850862"
+    },
+    {
+        "company_name": "Alibaba",
+        "company_id": "5349984"
+    },
+    {
+        "company_name": "JD.com",
+        "company_id": "26062363"
+    },
+    {
+        "company_name": "Pinduoduo",
+        "company_id": "361348"
+    },
+    {
+        "company_name": "eBay",
+        "company_id": "1481"
+    },
+    {
+        "company_name": "Etsy",
+        "company_id": "67849"
+    },
+    {
+        "company_name": "Zalando",
+        "company_id": "698916"
+    },
+    {
+        "company_name": "ASOS",
+        "company_id": "24900083"
+    },
+    {
+        "company_name": "Flipkart",
+        "company_id": "321062"
+    },
+    {
+        "company_name": "Meesho",
+        "company_id": "10037698"
+    },
+    {
+        "company_name": "Lazada",
+        "company_id": "2725478"
+    },
+    {
+        "company_name": "Tokopedia",
+        "company_id": "361348"
+    },
+    {
+        "company_name": "Mercado Libre",
+        "company_id": "361348"
+    },
+    {
+        "company_name": "Wayfair",
+        "company_id": "19857"
+    },
+    {
+        "company_name": "Chewy",
+        "company_id": "73782000"
+    },
+    {
+        "company_name": "Instacart",
+        "company_id": "2732417"
+    },
+    {
+        "company_name": "DoorDash",
+        "company_id": "3205573"
+    },
+    {
+        "company_name": "Uber Eats",
+        "company_id": "361348"
+    },
+    {
+        "company_name": "Grab",
+        "company_id": "9552211"
+    },
+    {
+        "company_name": "Gojek",
+        "company_id": "2135950"
+    },
+    {
+        "company_name": "Coupang",
+        "company_id": "2824374"
+    },
+    {
+        "company_name": "Poshmark",
+        "company_id": "2685223"
+    },
+    {
+        "company_name": "Depop",
+        "company_id": "2347595"
+    },
+    {
+        "company_name": "Netflix",
+        "company_id": "165158"
+    },
+    {
+        "company_name": "Boston Consulting Group",
+        "company_id": "1784"
+    },
+    {
+        "company_name": "Bain & Company",
+        "company_id": "2114"
+    },
+    {
+        "company_name": "Deloitte",
+        "company_id": "1038"
+    },
+    {
+        "company_name": "Accenture",
+        "company_id": "1033"
+    },
+    {
+        "company_name": "Walmart",
+        "company_id": "2646"
+    },
+    {
+        "company_name": "Nike",
+        "company_id": "2029"
+    },
+    {
+        "company_name": "McDonald's",
+        "company_id": "361348"
+    },
+    {
+        "company_name": "Pfizer",
+        "company_id": "1185"
+    },
+    {
+        "company_name": "Boeing",
+        "company_id": "1384"
+    },
+    {
+        "company_name": "Siemens",
+        "company_id": "1043"
+    },
+    {
+        "company_name": "StockX",
+        "company_id": "15261355"
+    },
+    {
+        "company_name": "Faire",
+        "company_id": "5311546"
+    },
+    {
+        "company_name": "BigCommerce",
+        "company_id": "103315"
+    },
+    {
+        "company_name": "WooCommerce",
+        "company_id": "11737993"
+    },
+    {
+        "company_name": "Squarespace",
+        "company_id": "265314"
+    },
+    {
+        "company_name": "Blinkit",
+        "company_id": "3497594"
+    },
+    {
+        "company_name": "Zepto",
+        "company_id": "76108196"
+    },
+    {
+        "company_name": "Swiggy Instamart",
+        "company_id": "105331067"
+    },
+    {
+        "company_name": "Swiggy",
+        "company_id": "9252341"
+    },
+    {
+        "company_name": "Dunzo",
+        "company_id": "76231393"
+    },
+    {
+        "company_name": "BigBasket",
+        "company_id": "9422513"
+    },
+    {
+        "company_name": "Getir",
+        "company_id": "9866841"
+    },
+    {
+        "company_name": "Gorillas",
+        "company_id": "7147715"
+    },
+    {
+        "company_name": "Gopuff",
+        "company_id": "4872230"
+    },
+    {
+        "company_name": "Flink",
+        "company_id": "303143"
+    },
+    {
+        "company_name": "Jokr",
+        "company_id": "71566189"
+    },
+    {
+        "company_name": "Jiffy",
+        "company_id": "18170565"
+    },
+    {
+        "company_name": "Weezy",
+        "company_id": "33201223"
+    },
+    {
+        "company_name": "Buyk",
+        "company_id": null
+    },
+    {
+        "company_name": "Rappi",
+        "company_id": "9997324"
+    },
+    {
+        "company_name": "Instacart",
+        "company_id": "2732417"
+    },
+    {
+        "company_name": "DoorDash",
+        "company_id": "3205573"
+    },
+    {
+        "company_name": "Uber Eats",
+        "company_id": "361348"
+    },
+    {
+        "company_name": "Grab",
+        "company_id": "9552211"
+    },
+    {
+        "company_name": "Gojek",
+        "company_id": "2135950"
+    },
+    {
+        "company_name": "Lalamove",
+        "company_id": "3560688"
+    },
+    {
+        "company_name": "Meituan",
+        "company_id": "1166424"
+    },
+    {
+        "company_name": "Deliveroo",
+        "company_id": "2837535"
+    },
+    {
+        "company_name": "Just Eat Takeaway",
+        "company_id": null
+    },
+    {
+        "company_name": "HelloFresh",
+        "company_id": "2454643"
+    },
+    {
+        "company_name": "Picnic",
+        "company_id": "361348"
+    },
+    {
+        "company_name": "Rohlik",
+        "company_id": null
+    },
+    {
+        "company_name": "Everli",
+        "company_id": "23503197"
+    },
+    {
+        "company_name": "Cajoo",
+        "company_id": "361348"
+    },
+    {
+        "company_name": "Zapp",
+        "company_id": "1808637"
+    },
+    {
+        "company_name": "Dija",
+        "company_id": "22971162"
+    },
+    {
+        "company_name": "Myntra",
+        "company_id": "361348"
+    }
+]
