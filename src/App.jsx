@@ -39,48 +39,43 @@ const ROLE_SUGGESTIONS = [
   "Android Developer",
 ];
 
+const RESUME_URL =
+  "https://drive.google.com/file/d/1RYEX6EN371k2UcvasTVb8r5f5SxGxhMX/view";
+
 function generateReferralMessage({ company, position, jobLink, jobId }) {
   const jobIdPart = jobId ? ` (Job ID: ${jobId})` : "";
-  const jobLinkPart = jobLink ? ` (${jobLink})` : "";
+  const jobLinkPart = jobLink ? `\n\nJob posting: ${jobLink}` : "";
 
   return `Hi,
 
-I'm Atharva Mhatre, currently working as a Web Application Developer at Media.net with 1.5+ years of experience building scalable backend and full-stack systems.
+I'm Atharva Mhatre, currently working as a Web Application Developer at Media.net with 1.5+ years of experience building scalable backend systems using Go, JavaScript, Kafka, Redis, and GenAI technologies.
 
-I came across the ${position}${jobIdPart} opening at ${company}${jobLinkPart}, and I'm very interested in contributing — especially given my background in Go, JavaScript, Kafka, Redis, Gen-AI and experience developing systems handling 10M+ daily requests.
+I came across the ${position}${jobIdPart} role at ${company} and believe my experience developing systems handling 10M+ daily requests aligns well with the position. I'm also an ICPC Regionalist and have solved 1000+ DSA problems.${jobLinkPart}
 
-I've also solved 1000+ Data Structures & Algorithm problems (ICPC Regionalist), which has strengthened my problem-solving and system design skills.
-🔗 GitHub: https://github.com/Atharvamhatre149
-🔗 LeetCode: https://leetcode.com/u/ATHARVA_MHATRE/
+Resume: ${RESUME_URL}
 
-If possible, could you please refer me for this role or guide me through the referral process?
-📄 Resume: https://drive.google.com/file/d/1RYEX6EN371k2UcvasTVb8r5f5SxGxhMX/view?usp=sharing
+If you feel my profile is a good fit, I'd greatly appreciate a referral. Thank you for your time.
 
 Best regards,
-Atharva Mhatre
-atharvamhatre149@gmail.com`;
+Atharva Mhatre`;
 }
 
 function generateRecruiterMessage({ company, position, jobLink, jobId }) {
   const jobIdPart = jobId ? ` (Job ID: ${jobId})` : "";
-  const jobLinkPart = jobLink ? ` (${jobLink})` : "";
+  const jobLinkPart = jobLink ? `\n\nJob posting: ${jobLink}` : "";
 
   return `Hi,
 
-I came across the ${position}${jobIdPart} role at ${company}${jobLinkPart} and wanted to express my strong interest in the position.
+I'm Atharva Mhatre, currently working as a Web Application Developer at Media.net with 1.5+ years of experience building scalable backend systems using Go, JavaScript, Kafka, Redis, and GenAI technologies.
 
-I'm Atharva Mhatre, currently working as a Web Application Developer at Media.net with 1.5+ years of experience building scalable backend and full-stack systems in Go, JavaScript, Kafka, Redis, and Gen-AI — with systems handling 10M+ daily requests.
+I came across the ${position}${jobIdPart} role at ${company} and believe my experience developing systems handling 10M+ daily requests aligns well with the position. I'm also an ICPC Regionalist and have solved 1000+ DSA problems.${jobLinkPart}
 
-I've also solved 1000+ Data Structures & Algorithm problems (ICPC Regionalist), which has sharpened my problem-solving and system design skills.
-🔗 GitHub: https://github.com/Atharvamhatre149
-🔗 LeetCode: https://leetcode.com/u/ATHARVA_MHATRE/
-📄 Resume: https://drive.google.com/file/d/1RYEX6EN371k2UcvasTVb8r5f5SxGxhMX/view?usp=sharing
+Resume: ${RESUME_URL}
 
-I'd love to be considered for this role. Can you consider me for this position?
+I'd love to be considered for this role. Thank you for your time.
 
 Best regards,
-Atharva Mhatre
-atharvamhatre149@gmail.com`;
+Atharva Mhatre`;
 }
 
 function extractCompanyId(input) {
