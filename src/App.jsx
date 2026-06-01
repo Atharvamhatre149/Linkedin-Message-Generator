@@ -1,8 +1,22 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import "./App.css";
 import companyList from "../company_list.json";
+import {
+  TONE_OPTIONS,
+  generateConnectionNote,
+  generateMessage,
+  connectionNoteMeta,
+} from "./messages";
+import {
+  TRACKER_STATUSES,
+  addApplication,
+  deleteApplication,
+  getDraft,
+  loadApplications,
+  saveDraft,
+  updateApplication,
+} from "./storage";
 
-// Case-insensitive name → id map; first valid id wins on duplicates
 const COMPANY_MAP = {};
 for (const { company_name, company_id } of companyList) {
   const key = company_name.toLowerCase();
@@ -39,45 +53,6 @@ const ROLE_SUGGESTIONS = [
   "Android Developer",
 ];
 
-const RESUME_URL =
-  "https://drive.google.com/file/d/1RYEX6EN371k2UcvasTVb8r5f5SxGxhMX/view";
-
-function generateReferralMessage({ company, position, jobLink, jobId }) {
-  const jobIdPart = jobId ? ` (Job ID: ${jobId})` : "";
-  const jobLinkPart = jobLink ? `\n\nJob posting: ${jobLink}` : "";
-
-  return `Hi,
-
-I'm Atharva Mhatre, currently working as a Web Application Developer at Media.net with 1.5+ years of experience building scalable backend systems using Go, JavaScript, Kafka, Redis, and GenAI technologies.
-
-I came across the ${position}${jobIdPart} role at ${company} and believe my experience developing systems handling 10M+ daily requests aligns well with the position. I'm also an ICPC Regionalist and have solved 1000+ DSA problems.${jobLinkPart}
-
-Resume: ${RESUME_URL}
-
-If you feel my profile is a good fit, I'd greatly appreciate a referral. Thank you for your time.
-
-Best regards,
-Atharva Mhatre`;
-}
-
-function generateRecruiterMessage({ company, position, jobLink, jobId }) {
-  const jobIdPart = jobId ? ` (Job ID: ${jobId})` : "";
-  const jobLinkPart = jobLink ? `\n\nJob posting: ${jobLink}` : "";
-
-  return `Hi,
-
-I'm Atharva Mhatre, currently working as a Web Application Developer at Media.net with 1.5+ years of experience building scalable backend systems using Go, JavaScript, Kafka, Redis, and GenAI technologies.
-
-I came across the ${position}${jobIdPart} role at ${company} and believe my experience developing systems handling 10M+ daily requests aligns well with the position. I'm also an ICPC Regionalist and have solved 1000+ DSA problems.${jobLinkPart}
-
-Resume: ${RESUME_URL}
-
-I'd love to be considered for this role. Thank you for your time.
-
-Best regards,
-Atharva Mhatre`;
-}
-
 function extractCompanyId(input) {
   if (!input) return "";
   const trimmed = input.trim();
@@ -86,7 +61,6 @@ function extractCompanyId(input) {
   return match ? match[1] : "";
 }
 
-// Open connections at this company — to find people to message
 function buildConnectionsUrl(companyId, filterKeywords) {
   const params = new URLSearchParams({
     origin: "FACETED_SEARCH",
@@ -97,13 +71,18 @@ function buildConnectionsUrl(companyId, filterKeywords) {
   return `https://www.linkedin.com/search/results/people/?${params}`;
 }
 
-// Keyword search — to find people to send connection requests
 function buildSearchUrl(companyName) {
   const params = new URLSearchParams({
     keywords: companyName,
     origin: "SWITCH_SEARCH_VERTICAL",
   });
   return `https://www.linkedin.com/search/results/people/?${params}`;
+}
+
+function getLinkedInSearchUrl(company, companyLinkedInId, filterKeywords) {
+  const id = extractCompanyId(companyLinkedInId);
+  if (id) return buildConnectionsUrl(id, filterKeywords);
+  return buildSearchUrl(company);
 }
 
 const LinkedInIcon = ({ className }) => (
@@ -117,22 +96,88 @@ function App() {
   const [position, setPosition] = useState("");
   const [jobLink, setJobLink] = useState("");
   const [jobId, setJobId] = useState("");
+  const [contactName, setContactName] = useState("");
   const [companyLinkedInId, setCompanyLinkedInId] = useState("");
   const [message, setMessage] = useState("");
   const [copied, setCopied] = useState(false);
+  const [noteCopied, setNoteCopied] = useState(false);
   const [activeFilter, setActiveFilter] = useState(4);
   const [msgType, setMsgType] = useState("referral");
+  const [tone, setTone] = useState("standard");
   const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
+  const [draftHint, setDraftHint] = useState("");
+  const [applications, setApplications] = useState(() => loadApplications());
 
   const extractedId = extractCompanyId(companyLinkedInId);
   const isValid = company.trim() && position.trim();
 
-  // Filtered company suggestions (max 10) for the autocomplete dropdown
+  const connectionNote = useMemo(() => {
+    if (!isValid) return "";
+    return generateConnectionNote({
+      company: company.trim(),
+      position: position.trim(),
+    });
+  }, [company, position, isValid]);
+
+  const noteMeta = connectionNote ? connectionNoteMeta(connectionNote) : null;
+
   const companyMatches = (() => {
     const q = company.trim().toLowerCase();
     if (!q) return COMPANY_NAMES.slice(0, 10);
     return COMPANY_NAMES.filter((n) => n.toLowerCase().includes(q)).slice(0, 10);
   })();
+
+  const formParams = () => ({
+    company: company.trim(),
+    position: position.trim(),
+    jobLink: jobLink.trim(),
+    jobId: jobId.trim(),
+    contactName: contactName.trim(),
+  });
+
+  function persistDraft(fields) {
+    if (!fields.company) return;
+    saveDraft(fields.company, fields);
+  }
+
+  function applyDraft(name) {
+    const draft = getDraft(name);
+    if (!draft) return false;
+    setPosition(draft.position ?? "");
+    setJobLink(draft.jobLink ?? "");
+    setJobId(draft.jobId ?? "");
+    setContactName(draft.contactName ?? "");
+    setCompanyLinkedInId(
+      draft.companyLinkedInId ?? COMPANY_MAP[name.toLowerCase()] ?? ""
+    );
+    setDraftHint(`Draft restored for ${name}`);
+    setTimeout(() => setDraftHint(""), 3000);
+    return true;
+  }
+
+  function refreshOutputs(type, toneId) {
+    const params = formParams();
+    setMsgType(type);
+    setTone(toneId);
+    setMessage(generateMessage({ msgType: type, tone: toneId, ...params }));
+    setCopied(false);
+    setNoteCopied(false);
+  }
+
+  useEffect(() => {
+    if (!company.trim()) return;
+    const t = setTimeout(() => {
+      persistDraft({
+        company: company.trim(),
+        position,
+        jobLink,
+        jobId,
+        contactName,
+        companyLinkedInId,
+      });
+    }, 500);
+    return () => clearTimeout(t);
+  }, [company, position, jobLink, jobId, contactName, companyLinkedInId]);
 
   function handleCompanyChange(value) {
     setCompany(value);
@@ -145,28 +190,56 @@ function App() {
     setCompany(name);
     setCompanyLinkedInId(COMPANY_MAP[name.toLowerCase()] ?? "");
     setShowCompanyDropdown(false);
+    applyDraft(name);
   }
 
   function handleGenerate(type) {
-    const params = {
+    if (!isValid) return;
+    refreshOutputs(type, tone);
+    persistDraft({
       company: company.trim(),
-      position: position.trim(),
-      jobLink: jobLink.trim(),
-      jobId: jobId.trim(),
-    };
-    setMsgType(type);
-    setMessage(
-      type === "recruiter"
-        ? generateRecruiterMessage(params)
-        : generateReferralMessage(params)
-    );
-    setCopied(false);
+      position,
+      jobLink,
+      jobId,
+      contactName,
+      companyLinkedInId,
+    });
+  }
+
+  function handleToneChange(toneId) {
+    setTone(toneId);
+    if (message && isValid) {
+      setMessage(generateMessage({ msgType, tone: toneId, ...formParams() }));
+      setCopied(false);
+    }
+  }
+
+  function copyText(text, setCopiedFlag) {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedFlag(true);
+      setTimeout(() => setCopiedFlag(false), 2000);
+    });
   }
 
   function handleCopy() {
+    copyText(message, setCopied);
+  }
+
+  function handleCopyNote() {
+    copyText(connectionNote, setNoteCopied);
+  }
+
+  function handleCopyAndOpenLinkedIn() {
+    if (!message) return;
+    const url = getLinkedInSearchUrl(
+      company.trim(),
+      companyLinkedInId,
+      FILTERS[activeFilter].keywords
+    );
     navigator.clipboard.writeText(message).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+      window.open(url, "_blank", "noopener,noreferrer");
     });
   }
 
@@ -175,29 +248,64 @@ function App() {
     setPosition("");
     setJobLink("");
     setJobId("");
+    setContactName("");
     setCompanyLinkedInId("");
     setMessage("");
     setCopied(false);
+    setNoteCopied(false);
     setActiveFilter(4);
+    setTone("standard");
     setShowCompanyDropdown(false);
+    setDraftHint("");
   }
 
   function handleMyConnections() {
     if (!extractedId) return;
-    const url = buildConnectionsUrl(extractedId, FILTERS[activeFilter].keywords);
-    window.open(url, "_blank", "noopener,noreferrer");
+    window.open(
+      buildConnectionsUrl(extractedId, FILTERS[activeFilter].keywords),
+      "_blank",
+      "noopener,noreferrer"
+    );
   }
 
   function handleFindPeople() {
-    const url = buildSearchUrl(company.trim());
-    window.open(url, "_blank", "noopener,noreferrer");
+    window.open(buildSearchUrl(company.trim()), "_blank", "noopener,noreferrer");
   }
+
+  function handleAddToTracker() {
+    if (!isValid) return;
+    const list = addApplication({
+      company: company.trim(),
+      position: position.trim(),
+      dateApplied: new Date().toISOString().slice(0, 10),
+      referralAsked: msgType === "referral",
+      contactName: contactName.trim(),
+      status: msgType === "referral" ? "Referral Asked" : "Applied",
+      jobLink: jobLink.trim(),
+    });
+    setApplications(list);
+  }
+
+  function handleTrackerChange(id, field, value) {
+    setApplications(updateApplication(id, { [field]: value }));
+  }
+
+  function handleTrackerDelete(id) {
+    setApplications(deleteApplication(id));
+  }
+
+  const toneLabel = TONE_OPTIONS.find((t) => t.id === tone)?.label ?? tone;
+  const outputTitle =
+    tone === "follow-up"
+      ? "Follow-up"
+      : msgType === "recruiter"
+        ? "Recruiter"
+        : "Referral";
 
   return (
     <div className="app">
       <h1>LinkedIn Message Generator</h1>
 
-      {/* ── Form ── */}
       <div className="form">
         <label className="company-field">
           Company Name <span className="required">*</span>
@@ -205,10 +313,19 @@ function App() {
             value={company}
             onChange={(e) => handleCompanyChange(e.target.value)}
             onFocus={() => setShowCompanyDropdown(true)}
-            onBlur={() => setTimeout(() => setShowCompanyDropdown(false), 150)}
+            onBlur={() => {
+              setTimeout(() => {
+                setShowCompanyDropdown(false);
+                const name = company.trim();
+                if (name && getDraft(name) && !position.trim()) {
+                  applyDraft(name);
+                }
+              }, 150);
+            }}
             placeholder="e.g. Google"
             autoComplete="off"
           />
+          {draftHint && <span className="draft-hint">{draftHint}</span>}
           {showCompanyDropdown && companyMatches.length > 0 && (
             <div className="company-dropdown">
               {companyMatches.map((name) => (
@@ -243,6 +360,16 @@ function App() {
         </label>
 
         <label>
+          Contact name <span className="optional">(optional, for follow-up)</span>
+          <input
+            value={contactName}
+            onChange={(e) => setContactName(e.target.value)}
+            placeholder="e.g. Jane"
+            autoComplete="off"
+          />
+        </label>
+
+        <label>
           Job Link <span className="optional">(optional)</span>
           <input
             value={jobLink}
@@ -260,6 +387,22 @@ function App() {
           />
         </label>
 
+        <div className="variant-section">
+          <span className="variant-label">Message tone</span>
+          <div className="filter-chips">
+            {TONE_OPTIONS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                className={`chip ${tone === t.id ? "chip--active" : ""}`}
+                onClick={() => handleToneChange(t.id)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="buttons">
           <div className="buttons-row">
             <button
@@ -267,23 +410,22 @@ function App() {
               disabled={!isValid}
               onClick={() => handleGenerate("referral")}
             >
-              👥 Referral Message
+              Referral Message
             </button>
             <button
               className="btn-generate btn-generate--recruiter"
               disabled={!isValid}
               onClick={() => handleGenerate("recruiter")}
             >
-              🎯 Recruiter Message
+              Recruiter Message
             </button>
           </div>
-          <button className="btn-reset" onClick={handleReset}>
+          <button className="btn-reset" type="button" onClick={handleReset}>
             Reset
           </button>
         </div>
       </div>
 
-      {/* ── Find on LinkedIn ── */}
       <div
         className={`find-section ${
           !company.trim() ? "find-section--disabled" : ""
@@ -301,6 +443,7 @@ function App() {
           {FILTERS.map((f, i) => (
             <button
               key={f.label}
+              type="button"
               className={`chip ${activeFilter === i ? "chip--active" : ""}`}
               onClick={() => setActiveFilter(i)}
             >
@@ -311,6 +454,7 @@ function App() {
 
         <div className="search-buttons">
           <button
+            type="button"
             className="btn-linkedin btn-linkedin--connections"
             disabled={!company.trim() || !extractedId}
             onClick={handleMyConnections}
@@ -322,6 +466,7 @@ function App() {
             My Connections
           </button>
           <button
+            type="button"
             className="btn-linkedin"
             disabled={!company.trim()}
             onClick={handleFindPeople}
@@ -346,22 +491,137 @@ function App() {
         </p>
       </div>
 
-      {/* ── Generated Output ── */}
+      {isValid && connectionNote && (
+        <div className="output output--note">
+          <div className="output-header">
+            <h2>
+              Connection note
+              {noteMeta && (
+                <span
+                  className={`char-count ${noteMeta.over ? "char-count--over" : ""}`}
+                >
+                  {noteMeta.length}/{noteMeta.limit}
+                </span>
+              )}
+            </h2>
+            <button type="button" className="btn-copy" onClick={handleCopyNote}>
+              {noteCopied ? "Copied!" : "Copy"}
+            </button>
+          </div>
+          <pre className="message message--compact">{connectionNote}</pre>
+        </div>
+      )}
+
       {message && (
         <div className="output">
           <div className="output-header">
             <h2>
-              {msgType === "recruiter"
-                ? "🎯 Recruiter Message"
-                : "👥 Referral Message"}
+              {outputTitle} · {toneLabel}
             </h2>
-            <button className="btn-copy" onClick={handleCopy}>
-              {copied ? "✓ Copied!" : "Copy"}
-            </button>
+            <div className="output-actions">
+              <button type="button" className="btn-copy" onClick={handleCopy}>
+                {copied ? "Copied!" : "Copy"}
+              </button>
+              <button
+                type="button"
+                className="btn-copy btn-copy--linkedin"
+                onClick={handleCopyAndOpenLinkedIn}
+              >
+                Copy + LinkedIn
+              </button>
+            </div>
           </div>
           <pre className="message">{message}</pre>
         </div>
       )}
+
+      <section className="tracker-section">
+        <div className="tracker-header">
+          <h2>Application tracker</h2>
+          <button
+            type="button"
+            className="btn-tracker-add"
+            disabled={!isValid}
+            onClick={handleAddToTracker}
+          >
+            Add current job
+          </button>
+        </div>
+        <p className="tracker-hint">
+          Saved in this browser only. Use after you generate a message or apply.
+        </p>
+        {applications.length === 0 ? (
+          <p className="tracker-empty">No applications tracked yet.</p>
+        ) : (
+          <div className="tracker-table-wrap">
+            <table className="tracker-table">
+              <thead>
+                <tr>
+                  <th>Company</th>
+                  <th>Role</th>
+                  <th>Date</th>
+                  <th>Contact</th>
+                  <th>Status</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {applications.map((row) => (
+                  <tr key={row.id}>
+                    <td>{row.company}</td>
+                    <td>{row.position}</td>
+                    <td>
+                      <input
+                        type="date"
+                        className="tracker-input"
+                        value={row.dateApplied ?? ""}
+                        onChange={(e) =>
+                          handleTrackerChange(row.id, "dateApplied", e.target.value)
+                        }
+                      />
+                    </td>
+                    <td>
+                      <input
+                        className="tracker-input"
+                        value={row.contactName ?? ""}
+                        placeholder="Name"
+                        onChange={(e) =>
+                          handleTrackerChange(row.id, "contactName", e.target.value)
+                        }
+                      />
+                    </td>
+                    <td>
+                      <select
+                        className="tracker-select"
+                        value={row.status ?? "Applied"}
+                        onChange={(e) =>
+                          handleTrackerChange(row.id, "status", e.target.value)
+                        }
+                      >
+                        {TRACKER_STATUSES.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn-tracker-delete"
+                        onClick={() => handleTrackerDelete(row.id)}
+                        aria-label="Delete"
+                      >
+                        ×
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

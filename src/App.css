@@ -621,6 +621,155 @@ input:focus {
   overflow-x: hidden;
 }
 
+.message--compact {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.output--note {
+  margin-top: 20px;
+}
+
+.output-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.btn-copy--linkedin {
+  background: #0a66c2;
+}
+
+.btn-copy--linkedin:hover {
+  background: #004182;
+}
+
+.char-count {
+  font-size: 12px;
+  font-weight: 500;
+  color: #64748b;
+  margin-left: 8px;
+}
+
+.char-count--over {
+  color: #f87171;
+}
+
+.variant-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.variant-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #94a3b8;
+}
+
+.draft-hint {
+  font-size: 12px;
+  color: #34d399;
+  margin-top: 4px;
+}
+
+.tracker-section {
+  margin-top: 32px;
+  padding: 18px;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  background: #0f172a;
+}
+
+.tracker-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.tracker-hint,
+.tracker-empty {
+  font-size: 12px;
+  color: #64748b;
+  margin: 0 0 12px;
+}
+
+.btn-tracker-add {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: none;
+  background: #6366f1;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-tracker-add:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-tracker-add:not(:disabled):hover {
+  background: #4f46e5;
+}
+
+.tracker-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.tracker-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.tracker-table th,
+.tracker-table td {
+  padding: 8px 6px;
+  text-align: left;
+  border-bottom: 1px solid #1e293b;
+  color: #cbd5e1;
+}
+
+.tracker-table th {
+  color: #94a3b8;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.tracker-input,
+.tracker-select {
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid #334155;
+  background: #1e293b;
+  color: #e2e8f0;
+  font-size: 12px;
+  width: 100%;
+  min-width: 88px;
+  box-sizing: border-box;
+}
+
+.btn-tracker-delete {
+  background: transparent;
+  border: none;
+  color: #f87171;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0 6px;
+  line-height: 1;
+}
+
+.btn-tracker-delete:hover {
+  color: #fca5a5;
+}
+
 
 /* ─────────────────────────────────────────
    Mobile  ≤ 640px
@@ -668,6 +817,15 @@ input:focus {
     align-items: stretch;
     gap: 8px;
     padding: 12px 14px;
+  }
+
+  .output-actions {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .output-actions .btn-copy {
+    width: 100%;
   }
 
   .btn-copy {
