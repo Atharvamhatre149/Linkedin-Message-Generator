@@ -6,6 +6,7 @@ import {
   generateConnectionNote,
   generateMessage,
   connectionNoteMeta,
+  isGenericMessageType,
 } from "./messages";
 import {
   TRACKER_STATUSES,
@@ -109,15 +110,16 @@ function App() {
   const [applications, setApplications] = useState(() => loadApplications());
 
   const extractedId = extractCompanyId(companyLinkedInId);
-  const isValid = company.trim() && position.trim();
+  const hasCompany = !!company.trim();
+  const isRoleMessageValid = hasCompany && !!position.trim();
 
   const connectionNote = useMemo(() => {
-    if (!isValid) return "";
+    if (!hasCompany) return "";
     return generateConnectionNote({
       company: company.trim(),
       position: position.trim(),
     });
-  }, [company, position, isValid]);
+  }, [company, position, hasCompany]);
 
   const noteMeta = connectionNote ? connectionNoteMeta(connectionNote) : null;
 
@@ -194,8 +196,25 @@ function App() {
   }
 
   function handleGenerate(type) {
-    if (!isValid) return;
+    if (!isRoleMessageValid) return;
     refreshOutputs(type, tone);
+    persistDraft({
+      company: company.trim(),
+      position,
+      jobLink,
+      jobId,
+      contactName,
+      companyLinkedInId,
+    });
+  }
+
+  function handleGenerateGeneric(type) {
+    if (!hasCompany) return;
+    setMsgType(type);
+    setTone("standard");
+    setMessage(generateMessage({ msgType: type, tone: "standard", ...formParams() }));
+    setCopied(false);
+    setNoteCopied(false);
     persistDraft({
       company: company.trim(),
       position,
@@ -208,7 +227,7 @@ function App() {
 
   function handleToneChange(toneId) {
     setTone(toneId);
-    if (message && isValid) {
+    if (message && isRoleMessageValid && !isGenericMessageType(msgType)) {
       setMessage(generateMessage({ msgType, tone: toneId, ...formParams() }));
       setCopied(false);
     }
@@ -273,10 +292,10 @@ function App() {
   }
 
   function handleAddToTracker() {
-    if (!isValid) return;
+    if (!hasCompany) return;
     const list = addApplication({
       company: company.trim(),
-      position: position.trim(),
+      position: position.trim() || "General outreach",
       dateApplied: new Date().toISOString().slice(0, 10),
       referralAsked: msgType === "referral",
       contactName: contactName.trim(),
@@ -295,12 +314,20 @@ function App() {
   }
 
   const toneLabel = TONE_OPTIONS.find((t) => t.id === tone)?.label ?? tone;
-  const outputTitle =
-    tone === "follow-up"
-      ? "Follow-up"
-      : msgType === "recruiter"
-        ? "Recruiter"
-        : "Referral";
+  const outputTitle = (() => {
+    if (msgType === "generic-hr") return "Generic outreach · HR";
+    if (msgType === "generic-employee") return "Generic outreach · Employee";
+    if (tone === "follow-up") return "Follow-up";
+    if (msgType === "recruiter") return "Recruiter";
+    return "Referral";
+  })();
+
+  const findAudience =
+    msgType === "generic-hr"
+      ? "HR"
+      : msgType === "generic-employee" || msgType === "referral"
+        ? "Employees"
+        : "Recruiters";
 
   return (
     <div className="app">
@@ -344,7 +371,8 @@ function App() {
         </label>
 
         <label>
-          Position / Role <span className="required">*</span>
+          Position / Role{" "}
+          <span className="optional">(required for role-specific messages)</span>
           <input
             list="role-suggestions"
             value={position}
@@ -360,11 +388,12 @@ function App() {
         </label>
 
         <label>
-          Contact name <span className="optional">(optional, for follow-up)</span>
+          Contact name{" "}
+          <span className="optional">(optional — used in greeting)</span>
           <input
             value={contactName}
             onChange={(e) => setContactName(e.target.value)}
-            placeholder="e.g. Jane"
+            placeholder="e.g. Priya"
             autoComplete="off"
           />
         </label>
@@ -388,7 +417,9 @@ function App() {
         </label>
 
         <div className="variant-section">
-          <span className="variant-label">Message tone</span>
+          <span className="variant-label">
+            Message tone <span className="optional">(role-specific only)</span>
+          </span>
           <div className="filter-chips">
             {TONE_OPTIONS.map((t) => (
               <button
@@ -404,22 +435,48 @@ function App() {
         </div>
 
         <div className="buttons">
+          <p className="buttons-section-label">Specific role</p>
           <div className="buttons-row">
             <button
+              type="button"
               className="btn-generate"
-              disabled={!isValid}
+              disabled={!isRoleMessageValid}
               onClick={() => handleGenerate("referral")}
             >
               Referral Message
             </button>
             <button
+              type="button"
               className="btn-generate btn-generate--recruiter"
-              disabled={!isValid}
+              disabled={!isRoleMessageValid}
               onClick={() => handleGenerate("recruiter")}
             >
               Recruiter Message
             </button>
           </div>
+
+          <p className="buttons-section-label">
+            No job posting — company only
+          </p>
+          <div className="buttons-row">
+            <button
+              type="button"
+              className="btn-generate btn-generate--generic-hr"
+              disabled={!hasCompany}
+              onClick={() => handleGenerateGeneric("generic-hr")}
+            >
+              Generic · HR
+            </button>
+            <button
+              type="button"
+              className="btn-generate btn-generate--generic-employee"
+              disabled={!hasCompany}
+              onClick={() => handleGenerateGeneric("generic-employee")}
+            >
+              Generic · Employee
+            </button>
+          </div>
+
           <button className="btn-reset" type="button" onClick={handleReset}>
             Reset
           </button>
@@ -434,7 +491,7 @@ function App() {
         <div className="find-header">
           <span className="find-title">
             <LinkedInIcon className="linkedin-icon" />
-            Find {msgType === "recruiter" ? "Recruiters" : "Employees"} at{" "}
+            Find {findAudience} at{" "}
             {company.trim() || "Company"}
           </span>
         </div>
@@ -491,7 +548,7 @@ function App() {
         </p>
       </div>
 
-      {isValid && connectionNote && (
+      {hasCompany && connectionNote && (
         <div className="output output--note">
           <div className="output-header">
             <h2>
@@ -516,7 +573,8 @@ function App() {
         <div className="output">
           <div className="output-header">
             <h2>
-              {outputTitle} · {toneLabel}
+              {outputTitle}
+              {!isGenericMessageType(msgType) && ` · ${toneLabel}`}
             </h2>
             <div className="output-actions">
               <button type="button" className="btn-copy" onClick={handleCopy}>
@@ -541,7 +599,7 @@ function App() {
           <button
             type="button"
             className="btn-tracker-add"
-            disabled={!isValid}
+            disabled={!hasCompany}
             onClick={handleAddToTracker}
           >
             Add current job

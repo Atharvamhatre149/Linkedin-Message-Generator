@@ -133,6 +133,31 @@ input:focus {
   background: #0d6460;
 }
 
+.btn-generate--generic-hr {
+  background: #7c3aed;
+}
+
+.btn-generate--generic-hr:not(:disabled):hover {
+  background: #6d28d9;
+}
+
+.btn-generate--generic-employee {
+  background: #b45309;
+}
+
+.btn-generate--generic-employee:not(:disabled):hover {
+  background: #92400e;
+}
+
+.buttons-section-label {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .btn-reset {
   background: #334155;
   color: #e2e8f0;
