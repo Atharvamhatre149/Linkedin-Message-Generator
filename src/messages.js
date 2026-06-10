@@ -113,12 +113,33 @@ Best regards,
 Atharva Mhatre`;
 }
 
-function generateReferralShort({ company, position }) {
-  return `Hi, I'm Atharva Mhatre (Media.net, 2+ yrs, Go/JS/Kafka/Redis). Interested in the ${position} role at ${company} — systems at 10M+ daily requests, ICPC Regionalist, 1000+ DSA. Resume: ${RESUME_URL}. Would appreciate a referral if my profile fits. Thanks!`;
+function jobDetailsBlock({ jobId, jobLink }) {
+  const lines = [];
+  if (jobId) lines.push(`Job Id: ${jobId}`);
+  if (jobLink) lines.push(`Job Link: ${jobLink}`);
+  return lines.length ? `\n\n${lines.join("\n")}` : "";
 }
 
-function generateRecruiterShort({ company, position }) {
-  return `Hi, I'm Atharva Mhatre (Media.net, 2+ yrs, Go/JS/Kafka/Redis). Strong interest in ${position} at ${company} — 10M+ daily requests, ICPC Regionalist, 1000+ DSA. Resume: ${RESUME_URL}. Hope you'll consider my application. Thanks!`;
+function generateReferralShort({ company, position, jobId, jobLink }) {
+  return `Hi, I'm Atharva Mhatre — Software Engineer at Media.net (2+ yrs, Go/JS/Kafka/Redis), handling systems at 10M+ daily requests. ICPC Regionalist, 1000+ DSA solved.
+
+Hey, can you please refer me for the below position${position ? ` (${position}) at ${company}` : ` at ${company}`}?${jobDetailsBlock({ jobId, jobLink })}
+
+Updated Resume:
+${RESUME_URL}
+
+Thank you!`;
+}
+
+function generateRecruiterShort({ company, position, jobId, jobLink }) {
+  return `Hi, I'm Atharva Mhatre — Software Engineer at Media.net (2+ yrs, Go/JS/Kafka/Redis), handling systems at 10M+ daily requests. ICPC Regionalist, 1000+ DSA solved.
+
+Hey, I'd love to be considered for the below position${position ? ` (${position}) at ${company}` : ` at ${company}`}.${jobDetailsBlock({ jobId, jobLink })}
+
+Updated Resume:
+${RESUME_URL}
+
+Thank you!`;
 }
 
 function generateFollowUp({ company, position, contactName, msgType }) {
