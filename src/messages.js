@@ -1,5 +1,5 @@
 export const RESUME_URL =
-  "https://drive.google.com/file/d/1RYEX6EN371k2UcvasTVb8r5f5SxGxhMX/view";
+  "https://drive.google.com/file/d/1dD7002O1fvZHrC73l9NwmeMxp47Eoya1/view?usp=sharing";
 
 const GITHUB_URL = "https://github.com/Atharvamhatre149";
 const LEETCODE_URL = "https://leetcode.com/u/ATHARVA_MHATRE/";
