@@ -686,5 +686,17 @@
     {
         "company_name": "JioHotstar",
         "company_id": "105490663"
+    },
+    {
+        "company_name": "NatWest",
+        "company_id": "68360623"
+    },
+    {
+        "company_name": "Lowe's Companies",
+        "company_id": "4128"
+    },
+    {
+        "company_name": "Zeta",
+        "company_id": "10355561"
     }
 ]
