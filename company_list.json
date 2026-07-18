@@ -698,5 +698,25 @@
     {
         "company_name": "Zeta",
         "company_id": "10355561"
+    },
+    {
+        "company_name": "Autodesk",
+        "company_id": "1879"
+    },
+    {
+        "company_name": "CommerceIQ",
+        "company_id": "19177157"
+    },
+    {
+        "company_name": "Rolls-Royce",
+        "company_id": "3871"
+    },
+    {
+        "company_name": "Expedia Group",
+        "company_id": "2751"
+    },
+     {
+        "company_name": "Navi",
+        "company_id": "40662386"
     }
 ]
