@@ -715,8 +715,16 @@
         "company_name": "Expedia Group",
         "company_id": "2751"
     },
-     {
+    {
         "company_name": "Navi",
         "company_id": "40662386"
+    },
+    {
+        "company_name": "Juspay",
+        "company_id": "3590874"
+    },
+    {
+        "company_name": "tracelink",
+        "company_id": "457886"
     }
 ]
