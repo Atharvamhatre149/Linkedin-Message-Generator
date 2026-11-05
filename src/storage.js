@@ -1,19 +1,10 @@
 const DRAFTS_KEY = "lmg-drafts";
-const TRACKER_KEY = "lmg-applications";
-
-export const TRACKER_STATUSES = [
-  "Applied",
-  "Referral Asked",
-  "Referred",
-  "OA",
-  "Rejected",
-  "Offer",
-];
-
 function readJson(key, fallback) {
   try {
     const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : fallback;
+    const value = raw ? JSON.parse(raw) : fallback;
+    if (Array.isArray(fallback)) return Array.isArray(value) ? value.filter(item => item && typeof item === "object" && !Array.isArray(item)) : fallback;
+    return value && typeof value === "object" && !Array.isArray(value) ? value : fallback;
   } catch {
     return fallback;
   }
@@ -45,35 +36,12 @@ export function getDraft(company) {
   return loadDrafts()[draftKey(company)] ?? null;
 }
 
-export function loadApplications() {
-  return readJson(TRACKER_KEY, []);
+export function loadSettings() { return readJson("lmg-settings", {}); }
+export function saveSettings(settings) { writeJson("lmg-settings", settings); }
+export function loadHistory() { return readJson("lmg-history", []); }
+export function saveMessage(entry) {
+  const history = [{ ...entry, id: crypto.randomUUID(), createdAt: new Date().toISOString() }, ...loadHistory()].slice(0, 20);
+  writeJson("lmg-history", history);
+  return history;
 }
-
-export function saveApplications(list) {
-  writeJson(TRACKER_KEY, list);
-}
-
-export function addApplication(entry) {
-  const list = loadApplications();
-  const item = {
-    id: crypto.randomUUID(),
-    createdAt: new Date().toISOString(),
-    ...entry,
-  };
-  saveApplications([item, ...list]);
-  return item;
-}
-
-export function updateApplication(id, patch) {
-  const list = loadApplications().map((a) =>
-    a.id === id ? { ...a, ...patch } : a
-  );
-  saveApplications(list);
-  return list;
-}
-
-export function deleteApplication(id) {
-  const list = loadApplications().filter((a) => a.id !== id);
-  saveApplications(list);
-  return list;
-}
+export function clearHistory() { writeJson("lmg-history", []); return []; }
