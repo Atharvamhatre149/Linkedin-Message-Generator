@@ -179,7 +179,7 @@ function App() {
       {drafts.map(draft => <DraftCard key={draft.id} draft={draft} onChange={patch => setDrafts(current => current.map(item => item.id === draft.id ? { ...item, ...patch } : item))} onCopy={copy} onEmail={openEmail} onSave={item => { storeDraft(item); setNotice('Edited message saved.'); }} />)}
       <section className="groq-panel">
         <div className="tracker-header"><h2>Personalize with Groq</h2><button className="btn-generate" disabled={busy || !groq.configured || !context.resumeText.trim()} onClick={generateAi}>{busy ? 'Generating…' : drafts.some(item => item.id === 'groq') ? 'Regenerate with Groq' : 'Generate with Groq'}</button></div>
-        <p className="field-hint">{groq.checking ? 'Checking Groq connection…' : groq.error ? 'Groq server is unavailable. Run npm run dev or npm run preview to enable it.' : groq.configured ? `Ready · ${groq.model}. Uses resume text and job description to choose relevant facts.` : 'Add GROQ_API_KEY to .env.local and restart the app to enable AI generation.'}</p>
+        <p className="field-hint">{groq.checking ? 'Checking Groq connection…' : groq.error ? 'Cannot reach the Groq API route. On Vercel, deploy the api/groq functions and check the deployment logs.' : groq.configured ? `Ready · ${groq.model}. Uses resume text and job description to choose relevant facts.` : 'Set GROQ_API_KEY in your server environment (.env.local locally, or Vercel Environment Variables), then restart or redeploy.'}</p>
       </section>
     </>}
     {form.channel === 'message' && <>
