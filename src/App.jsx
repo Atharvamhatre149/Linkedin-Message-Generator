@@ -3,6 +3,7 @@ import './App.css';
 import companyList from '../company_list.json';
 import { FOCUS_OPTIONS, RESUME_URL, generateMessage, generateConnectionNote, isGenericMessageType } from './messages';
 import { RESUME_TEXT } from './resume';
+import { buildDraftContext, sameDraftContext, prepareGroqGeneration } from './drafts';
 import { emailSubject, buildMailtoUrl } from './email';
 import { loadSettings, saveSettings, loadHistory, saveMessage, clearHistory, saveDraft, getDraft } from './storage';
 
@@ -49,6 +50,7 @@ function App() {
   const noteLimit = settings.noteLimit === 300 ? 300 : 200;
   const valid = !!form.company.trim() && (isGenericMessageType(form.msgType) || !!form.position.trim());
   const note = form.company.trim() ? generateConnectionNote({ ...form, limit: noteLimit }) : '';
+  const inputsChanged = context && !sameDraftContext(context, buildDraftContext(form, resumeUrl, resumeText));
   const update = (key, value) => setForm(current => ({ ...current, [key]: value }));
 
   useEffect(() => {
@@ -66,11 +68,9 @@ function App() {
     setHistory(saveMessage(basics));
   }
 
-  function generateTemplates() {
-    if (!valid) return;
+  function publishTemplates(snapshot) {
     request.current?.abort();
     setBusy(false);
-    const snapshot = { ...form, company: form.company.trim(), position: form.position.trim(), resumeUrl, resumeText };
     const generated = [['short', 'Short template'], ['standard', 'Full template']].map(([tone, label]) => ({
       ...snapshot, id: tone, label, subject: snapshot.channel === 'email' ? emailSubject(snapshot) : '', message: generateMessage({ ...snapshot, tone }),
     }));
@@ -82,8 +82,14 @@ function App() {
     setNotice('Short and full drafts are ready. Generate a Groq draft below to compare.');
   }
 
+  function generateTemplates() {
+    if (!valid) return;
+    publishTemplates(buildDraftContext(form, resumeUrl, resumeText));
+  }
+
   async function generateAi() {
-    if (!context || busy) return;
+    if (!context || !valid || busy) return;
+    const snapshot = prepareGroqGeneration(form, resumeUrl, resumeText, context, publishTemplates);
     const controller = new AbortController();
     request.current?.abort();
     request.current = controller;
@@ -91,12 +97,12 @@ function App() {
     setNotice('Generating with Groq…');
     try {
       const response = await fetch('/api/groq/generate', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(context), signal: controller.signal,
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(snapshot), signal: controller.signal,
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Could not generate a draft.');
       if (typeof data.message !== 'string' || typeof data.subject !== 'string') throw new Error('Groq returned an invalid draft.');
-      const draft = { ...context, ...data, id: 'groq', label: 'Groq draft' };
+      const draft = { ...snapshot, ...data, id: 'groq', label: 'Groq draft' };
       setDrafts(current => [...current.filter(item => item.id !== 'groq'), draft]);
       storeDraft(draft);
       setNotice('Groq draft ready. Review the wording and facts before using it.');
@@ -175,10 +181,10 @@ function App() {
       <div className="buttons-row"><button className="btn-generate" disabled={!valid} onClick={generateTemplates}>Generate drafts</button><button className="btn-reset" onClick={reset}>Reset</button></div>
     </div>
     {context && <>
-      <p className="field-hint">Drafts use the form and resume at generation time. After changing inputs, generate drafts again.</p>
+      <p className="field-hint">{inputsChanged ? 'Inputs changed. Generate with Groq will also refresh the templates using your current form.' : 'Groq uses your current form and resume. Templates refresh automatically if inputs change.'}</p>
       {drafts.map(draft => <DraftCard key={draft.id} draft={draft} onChange={patch => setDrafts(current => current.map(item => item.id === draft.id ? { ...item, ...patch } : item))} onCopy={copy} onEmail={openEmail} onSave={item => { storeDraft(item); setNotice('Edited message saved.'); }} />)}
       <section className="groq-panel">
-        <div className="tracker-header"><h2>Personalize with Groq</h2><button className="btn-generate" disabled={busy || !groq.configured || !context.resumeText.trim()} onClick={generateAi}>{busy ? 'Generating…' : drafts.some(item => item.id === 'groq') ? 'Regenerate with Groq' : 'Generate with Groq'}</button></div>
+        <div className="tracker-header"><h2>Personalize with Groq</h2><button className="btn-generate" disabled={busy || !valid || !groq.configured || !resumeText.trim()} onClick={generateAi}>{busy ? 'Generating…' : drafts.some(item => item.id === 'groq') ? 'Regenerate with Groq' : 'Generate with Groq'}</button></div>
         <p className="field-hint">{groq.checking ? 'Checking Groq connection…' : groq.error ? 'Cannot reach the Groq API route. On Vercel, deploy the api/groq functions and check the deployment logs.' : groq.configured ? `Ready · ${groq.model}. Uses resume text and job description to choose relevant facts.` : 'Set GROQ_API_KEY in your server environment (.env.local locally, or Vercel Environment Variables), then restart or redeploy.'}</p>
       </section>
     </>}

@@ -52,3 +52,13 @@ test('local API rejects cross-origin requests, malformed JSON, and oversized bod
   assert.equal((await invoke('x'.repeat(128001))).status,413);
   assert.equal((await invoke(JSON.stringify(input))).status,503);
 });
+
+test('model failures identify model setup without exposing provider text',async()=>{
+  for (const code of ['model_not_found','model_decommissioned']) {
+    await assert.rejects(()=>generateGroqDraft(input,config,async()=>Response.json({error:{code,message:'private test-only-key text'}},{status:400})),error=>/GROQ_MODEL/.test(error.message)&&!error.message.includes('private')&&!error.message.includes('test-only-key'));
+  }
+});
+test('request rejection distinguishes unsupported models and structured-output failures',async()=>{
+  await assert.rejects(()=>generateGroqDraft(input,config,async()=>Response.json({error:{code:'invalid_request_error'}},{status:400})),/HTTP 400/);
+  await assert.rejects(()=>generateGroqDraft(input,config,async()=>Response.json({error:{code:'json_validate_failed'}},{status:400})),/JSON draft/);
+});

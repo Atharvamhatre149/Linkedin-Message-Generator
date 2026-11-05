@@ -47,7 +47,16 @@ export async function generateGroqDraft(input, { apiKey, model = DEFAULT_MODEL }
   if (!response.ok) {
     if (response.status === 429) throw fail('Groq rate limit reached. Please wait and try again.', 429);
     if (response.status === 401 || response.status === 403) throw fail('Groq rejected the API key. Check GROQ_API_KEY on the server.', 502);
-    throw fail('Groq could not generate a draft. Check the server model setting or try again.', 502);
+    let code;
+    try { code = (await response.json())?.error?.code; } catch { /* Provider may return a non-JSON error. */ }
+    if (['model_not_found', 'model_decommissioned'].includes(code) || response.status === 404) {
+      throw fail('The configured Groq model is unavailable. Set GROQ_MODEL to a supported chat model such as llama-3.3-70b-versatile, then redeploy.', 502);
+    }
+    if (code === 'json_validate_failed') throw fail('Groq could not produce a valid JSON draft. Please generate again.', 502);
+    if (code === 'context_length_exceeded' || response.status === 413) throw fail('Groq input is too long. Shorten the resume or job description and try again.', 502);
+    if (code === 'insufficient_quota' || response.status === 402) throw fail('Groq account quota is exhausted. Check your Groq usage and billing limits.', 502);
+    if (response.status === 400 || response.status === 422) throw fail(`Groq rejected the request (HTTP ${response.status}). Check that GROQ_MODEL supports chat completions and JSON Object mode; try llama-3.3-70b-versatile and redeploy.`, 502);
+    throw fail(`Groq service returned HTTP ${response.status}. Please try again later.`, 502);
   }
   try {
     const payload = await response.json();
